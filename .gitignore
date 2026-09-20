@@ -1,5 +1,4 @@
-.pio/
+__pycache__/
+*.pyc
 .vscode/
-.cache/
-compile_commands.json
-simulate_output.py
+.thonny/

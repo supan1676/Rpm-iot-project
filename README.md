@@ -1,55 +1,64 @@
-# IoMT Remote Patient Monitoring (RPM) Node
+# IoMT Remote Patient Monitoring (RPM) Node — MicroPython
 
-An ESP32-S3 powered Internet of Medical Things (IoMT) node designed for continuous, non-invasive remote patient monitoring, fall detection, and emergency alerting.
+An ESP32-S3 powered Internet of Medical Things (IoMT) node for continuous, non-invasive remote patient monitoring, fall detection, and emergency alerting. Written in **MicroPython**.
 
 ## 🏥 Overview
 
-This project implements a multi-sensor bedside patient monitor with local visual feedback, auditory alarms, and structured JSON telemetry for IoT cloud / gateway ingestion.
+Multi-sensor wrist-worn patient monitor with OLED display, haptic alerts, and structured JSON telemetry over serial.
 
 ### Key Features
-- **Vital Signs Monitoring**:
-  - Heart Rate (BPM) & Blood Oxygen Saturation ($SpO_2$) simulation / sensing
-  - Ambient & Body Temperature and Relative Humidity via **DHT22**
-- **Safety & Activity Tracking**:
-  - **Fall Detection**: Real-time 3-axis accelerometer vector magnitude calculation using **MPU6050**
-  - **Bed Presence / Mobility**: **PIR** motion sensing and **HC-SR04** ultrasonic distance measurement
-- **Alerting & Local Display**:
-  - **OLED SSD1306** (128x64 I2C): Displays real-time vitals and high-priority clinical warnings
-  - **SOS Emergency Pushbutton**: Immediate manual trigger for patient distress calls
-  - **Pulsing Buzzer**: Auditory alert system triggered by abnormal vitals, falls, or SOS
-- **Structured Telemetry**:
-  - Serial JSON stream emitting vitals, sensor flags, and alert statuses for downstream processing
+- **Heart Rate & SpO₂** — MAX30102 optical pulse oximeter (I2C 0x57)
+- **Skin Temperature** — MLX90614 contactless IR thermometer (I2C 0x5A)
+- **Fall Detection** — MPU6050 6-axis IMU, acceleration magnitude threshold (I2C 0x68)
+- **OLED Display** — SSD1306 128×64, real-time vitals dashboard (I2C 0x3C)
+- **SOS Emergency Button** — GPIO 5, internal pull-up, active LOW
+- **Haptic Alert** — Vibration motor via MOSFET on GPIO 18
+- **JSON Telemetry** — Serial output at 115200 baud
+
+---
+
+## 📁 Project Files
+
+| File | Purpose |
+|:---|:---|
+| `boot.py` | MicroPython boot config (disables debug, runs GC) |
+| `main.py` | Main application — sensor loop, alerting, display, telemetry |
+| `ssd1306.py` | SSD1306 OLED I2C driver (framebuf-based) |
+| `mpu6050.py` | MPU6050 IMU driver (accelerometer + gyro) |
+| `max30102.py` | MAX30102 pulse oximeter driver (BPM + SpO₂) |
+| `mlx90614.py` | MLX90614 IR temperature driver |
+| `test_sensors.py` | One-command hardware & I2C sensor diagnostic tool |
+| `upload_to_esp32.py` | Automated PC-to-ESP32 flasher with auto-port detection |
+| `wiring-guide.html` | Interactive hardware wiring reference |
 
 ---
 
 ## 🛠️ Hardware & Pin Configuration (ESP32-S3)
 
-| Component | Interface / Pin | Description |
-| :--- | :--- | :--- |
-| **SSD1306 OLED** | I2C (SDA: GPIO 8, SCL: GPIO 9) | 128x64 display (Address: `0x3C`) |
-| **MPU6050 IMU** | I2C (SDA: GPIO 8, SCL: GPIO 9) | 6-DOF IMU (Address: `0x68`) |
-| **DHT22 Sensor** | GPIO 5 | Temperature & Humidity |
-| **HR Potentiometer** | GPIO 4 (ADC) | Heart Rate (45 - 160 BPM) |
-| **SpO2 Potentiometer** | GPIO 6 (ADC) | Oxygen Saturation (85% - 100%) |
-| **PIR Motion Sensor** | GPIO 7 | Bed mobility / movement detection |
-| **SOS Pushbutton** | GPIO 10 | Emergency button (Input Pull-up, Active LOW) |
-| **HC-SR04 Ultrasonic** | TRIG: GPIO 15, ECHO: GPIO 16 | Bed proximity / distance measurement |
-| **Piezo Buzzer** | GPIO 18 | Pulsed clinical alarm |
+| Component | Interface / Pin | I2C Address |
+|:---|:---|:---|
+| **SSD1306 OLED** | I2C (SDA: GPIO 8, SCL: GPIO 9) | `0x3C` |
+| **MPU6050 IMU** | I2C (SDA: GPIO 8, SCL: GPIO 9) | `0x68` |
+| **MAX30102 Pulse Ox** | I2C (SDA: GPIO 8, SCL: GPIO 9) | `0x57` |
+| **MLX90614 IR Temp** | I2C (SDA: GPIO 8, SCL: GPIO 9) | `0x5A` |
+| **SOS Pushbutton** | GPIO 5 (INPUT_PULLUP) | — |
+| **Vibration Motor** | GPIO 18 (OUTPUT via MOSFET) | — |
+| **MAX30102 INT** | GPIO 2 (optional) | — |
+
+> ⚠️ **MLX90614**: Must use the **3.3V version (BCC)**, not the 5V version (BAA).
+> AD0 pin on MPU6050 must be tied to GND (sets address to 0x68).
 
 ---
 
 ## 📡 Telemetry Format
 
-The node outputs newline-delimited JSON over serial at `115200` baud:
+JSON output over serial at `115200` baud, once per second:
 
 ```json
 {
   "bpm": 76,
   "spo2": 98,
   "temp_c": 36.8,
-  "humidity_pct": 55.2,
-  "motion": false,
-  "bed_dist_cm": 45.2,
   "fall": false,
   "sos": false,
   "alert": false,
@@ -57,34 +66,64 @@ The node outputs newline-delimited JSON over serial at `115200` baud:
 }
 ```
 
+### Alert Thresholds
+| Condition | Threshold |
+|:---|:---|
+| Low Heart Rate | BPM < 50 |
+| High Heart Rate | BPM > 120 |
+| Low SpO₂ (Hypoxemia) | < 90% |
+| Fever | Core temp > 38.5°C |
+| Fall Detection | Acceleration > 2.5g |
+
 ---
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- [PlatformIO](https://platformio.org/) installed in VS Code or CLI
-- (Optional) [Wokwi](https://wokwi.com/) for online simulation
+- ESP32-S3-DevKitC-1 board
+- MicroPython firmware flashed ([download](https://micropython.org/download/ESP32_GENERIC_S3/))
+- [mpremote](https://docs.micropython.org/en/latest/reference/mpremote.html) or [Thonny IDE](https://thonny.org/)
 
-### Build & Flash via PlatformIO
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/supan1676/Rpm-iot-project.git
-   cd Rpm-iot-project
-   ```
-2. Build the project:
-   ```bash
-   pio run
-   ```
-3. Upload to ESP32-S3:
-   ```bash
-   pio run -t upload
-   ```
-4. Open the Serial Monitor:
-   ```bash
-   pio device monitor -b 115200
-   ```
+### 1. Flash MicroPython Firmware
 
-### Simulation via Wokwi
-This project includes `wokwi.toml` and `diagram.json` for simulation:
-1. Open the Wokwi extension in VS Code.
-2. Press `F1` and choose **Wokwi: Start Simulator**.
+```bash
+# Download the latest ESP32-S3 MicroPython firmware (.bin)
+# Then flash using esptool:
+pip install esptool
+esptool.py --chip esp32s3 --port COM6 erase_flash
+esptool.py --chip esp32s3 --port COM6 write_flash -z 0x0 ESP32_GENERIC_S3-*.bin
+```
+
+### 2. Upload Project Files
+
+```bash
+# Using mpremote:
+pip install mpremote
+mpremote connect COM6 cp boot.py :boot.py
+mpremote connect COM6 cp main.py :main.py
+mpremote connect COM6 cp ssd1306.py :ssd1306.py
+mpremote connect COM6 cp mpu6050.py :mpu6050.py
+mpremote connect COM6 cp max30102.py :max30102.py
+mpremote connect COM6 cp mlx90614.py :mlx90614.py
+```
+
+Or use **Thonny IDE**: Open each file → Save As → MicroPython device.
+
+### 3. Monitor Output
+
+```bash
+mpremote connect COM6 repl
+# Or any serial monitor at 115200 baud
+```
+
+---
+
+## 📋 Clinical Alert Behavior
+
+When any alert condition is active:
+1. **OLED** — Top bar inverts to show `!! ALERT !!`
+2. **Vibration Motor** — Pulses 200ms per loop cycle
+3. **Serial** — `"alert": true` in JSON telemetry
+4. **Fall Detection** — Auto-clears after 10 second cooldown
+
+SOS button triggers immediate alert when pressed (active LOW, debounced).

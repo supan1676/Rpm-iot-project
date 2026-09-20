@@ -1,3 +1,0 @@
-Downloaded from https://wokwi.com/projects/new/esp32-s3
-
-Simulate this project on https://wokwi.com

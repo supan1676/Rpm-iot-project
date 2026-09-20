@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoMT RPM — Real Hardware Wiring Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e17;
+    --surface: #111827;
+    --surface2: #1a2236;
+    --border: #2a3654;
+    --text: #e2e8f0;
+    --text-dim: #8892a8;
+    --accent: #3b82f6;
+    --accent-glow: rgba(59,130,246,0.15);
+    --red: #ef4444;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --orange: #f97316;
+    --purple: #a855f7;
+    --cyan: #06b6d4;
+    --pink: #ec4899;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    padding: 2.5rem 1rem 1.5rem;
+    background: linear-gradient(180deg, rgba(59,130,246,0.08) 0%, transparent 100%);
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 {
+    font-size: 1.8rem;
+    font-weight: 800;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.3rem;
+  }
+  .header p { color: var(--text-dim); font-size: 0.95rem; }
+
+  /* Tab Navigation */
+  .tabs {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    flex-wrap: wrap;
+  }
+  .tab-btn {
+    padding: 0.5rem 1.2rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .tab-btn:hover { border-color: var(--accent); color: var(--text); }
+  .tab-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* Main Content */
+  .content { max-width: 1200px; margin: 0 auto; padding: 1rem; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* I2C Bus Diagram */
+  .bus-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+  }
+  .bus-diagram h2 {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .bus-visual {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding: 1rem 0;
+  }
+  .bus-line {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .bus-wire {
+    height: 4px;
+    flex: 1;
+    min-width: 40px;
+  }
+  .bus-wire.sda { background: var(--green); }
+  .bus-wire.scl { background: var(--accent); }
+
+  /* Component Cards */
+  .component-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .comp-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.3s;
+    cursor: default;
+    position: relative;
+    overflow: hidden;
+  }
+  .comp-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--card-accent, var(--accent));
+  }
+  .comp-card:hover {
+    border-color: var(--card-accent, var(--accent));
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  }
+  .comp-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .comp-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+  }
+  .comp-name { font-weight: 700; font-size: 1rem; }
+  .comp-desc { font-size: 0.8rem; color: var(--text-dim); }
+  .comp-purpose {
+    font-size: 0.85rem;
+    color: var(--text-dim);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+  }
+
+  /* Pin Table */
+  .pin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin-bottom: 0.75rem;
+  }
+  .pin-table th {
+    text-align: left;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .pin-table td {
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid rgba(42,54,84,0.5);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+  }
+  .pin-table tr:last-child td { border-bottom: none; }
+
+  .wire-color {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  /* Warning boxes */
+  .warning-box {
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 10px;
+    padding: 0.8rem 1rem;
+    margin-top: 0.75rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+  .warning-box .icon { margin-right: 0.4rem; }
+  .warning-box.info {
+    background: rgba(59,130,246,0.08);
+    border-color: rgba(59,130,246,0.3);
+  }
+  .warning-box.success {
+    background: rgba(34,197,94,0.08);
+    border-color: rgba(34,197,94,0.3);
+  }
+
+  /* Full wiring table */
+  .full-table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+  .full-table-wrap h2 {
+    padding: 1.2rem 1.5rem 0.8rem;
+    font-size: 1.1rem;
+  }
+  .full-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+  .full-table th {
+    text-align: left;
+    padding: 0.6rem 1rem;
+    background: var(--surface2);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+  .full-table td {
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid rgba(42,54,84,0.4);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+  }
+  .full-table tr:hover td {
+    background: rgba(59,130,246,0.05);
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    font-family: 'Inter', sans-serif;
+  }
+  .badge.i2c { background: rgba(59,130,246,0.15); color: #60a5fa; }
+  .badge.gpio { background: rgba(34,197,94,0.15); color: #4ade80; }
+  .badge.power { background: rgba(239,68,68,0.15); color: #f87171; }
+  .badge.adc { background: rgba(168,85,247,0.15); color: #c084fc; }
+
+  /* ESP32 Pinout */
+  .esp-pinout {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+  }
+  .esp-pinout h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+  .pin-grid {
+    display: grid;
+    grid-template-columns: 1fr 80px 1fr;
+    gap: 0.3rem;
+    max-width: 700px;
+    margin: 0 auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+  }
+  .pin-left, .pin-right {
+    display: flex;
+    align-items: center;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+    transition: background 0.2s;
+  }
+  .pin-left { justify-content: flex-end; text-align: right; }
+  .pin-right { justify-content: flex-start; }
+  .pin-left:hover, .pin-right:hover { background: var(--surface2); }
+  .pin-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface2);
+    border-radius: 4px;
+    font-weight: 600;
+    color: var(--text-dim);
+    font-size: 0.7rem;
+  }
+  .pin-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin: 0 6px;
+    flex-shrink: 0;
+  }
+  .pin-used { font-weight: 600; color: var(--text); }
+  .pin-label {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    margin: 0 4px;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* Schematic SVG */
+  .schematic-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+  }
+  .schematic-wrap h2 { font-size: 1.1rem; margin-bottom: 1rem; text-align: left; }
+  .schematic-svg {
+    width: 100%;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  /* Motor driver circuit */
+  .driver-circuit {
+    background: var(--surface2);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 1rem;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.82rem;
+    line-height: 1.8;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--text-dim);
+  }
+
+  /* Responsive */
+  @media (max-width: 768px) {
+    .component-grid { grid-template-columns: 1fr; }
+    .header h1 { font-size: 1.4rem; }
+    .pin-grid { font-size: 0.7rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏥 IoMT RPM — Real Hardware Wiring Guide</h1>
+  <p>ESP32-S3 Wearable Patient Monitor • All Real-World Components • Every Pin Mapped</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="showTab('overview')">📋 Overview</button>
+  <button class="tab-btn" onclick="showTab('components')">🔧 Components</button>
+  <button class="tab-btn" onclick="showTab('wiring')">🔌 Full Wiring Table</button>
+  <button class="tab-btn" onclick="showTab('pinout')">📌 ESP32-S3 Pinout</button>
+  <button class="tab-btn" onclick="showTab('schematic')">⚡ Schematic</button>
+  <button class="tab-btn" onclick="showTab('warnings')">⚠️ Warnings</button>
+</div>
+
+<div class="content">
+
+<!-- ==================== OVERVIEW TAB ==================== -->
+<div id="tab-overview" class="tab-panel active">
+  <div class="bus-diagram">
+    <h2>🔗 I2C Bus — 4 Devices, 2 Wires</h2>
+    <p style="color:var(--text-dim); margin-bottom:1.5rem; font-size:0.9rem;">
+      All four I2C devices share GPIO 8 (SDA) and GPIO 9 (SCL). Each has a unique address — no conflicts.
+    </p>
+    <svg viewBox="0 0 900 200" class="schematic-svg" style="max-width:900px;">
+      <!-- I2C Bus Lines -->
+      <line x1="50" y1="90" x2="850" y2="90" stroke="#22c55e" stroke-width="3" stroke-dasharray="8,4"/>
+      <line x1="50" y1="110" x2="850" y2="110" stroke="#3b82f6" stroke-width="3" stroke-dasharray="8,4"/>
+      <text x="10" y="94" fill="#22c55e" font-size="11" font-family="JetBrains Mono">SDA</text>
+      <text x="10" y="114" fill="#3b82f6" font-size="11" font-family="JetBrains Mono">SCL</text>
+
+      <!-- ESP32-S3 -->
+      <rect x="50" y="30" width="120" height="40" rx="8" fill="#1e293b" stroke="#3b82f6" stroke-width="2"/>
+      <text x="110" y="55" fill="#e2e8f0" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">ESP32-S3</text>
+      <line x1="110" y1="70" x2="110" y2="90" stroke="#22c55e" stroke-width="2"/>
+      <text x="80" y="82" fill="#8892a8" font-size="9" font-family="JetBrains Mono">GPIO 8,9</text>
+
+      <!-- MAX30102 -->
+      <rect x="230" y="130" width="120" height="50" rx="8" fill="#1e293b" stroke="#ef4444" stroke-width="2"/>
+      <text x="290" y="152" fill="#f87171" font-size="11" font-weight="bold" text-anchor="middle" font-family="Inter">MAX30102</text>
+      <text x="290" y="168" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">0x57 • HR/SpO₂</text>
+      <line x1="290" y1="130" x2="290" y2="110" stroke="#3b82f6" stroke-width="2"/>
+      <line x1="280" y1="130" x2="280" y2="90" stroke="#22c55e" stroke-width="2"/>
+
+      <!-- MLX90614 / MAX30205 -->
+      <rect x="410" y="130" width="120" height="50" rx="8" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
+      <text x="470" y="152" fill="#fb923c" font-size="11" font-weight="bold" text-anchor="middle" font-family="Inter">MLX90614</text>
+      <text x="470" y="168" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">0x5A • Temp</text>
+      <line x1="470" y1="130" x2="470" y2="110" stroke="#3b82f6" stroke-width="2"/>
+      <line x1="460" y1="130" x2="460" y2="90" stroke="#22c55e" stroke-width="2"/>
+
+      <!-- MPU6050 -->
+      <rect x="590" y="130" width="120" height="50" rx="8" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+      <text x="650" y="152" fill="#c084fc" font-size="11" font-weight="bold" text-anchor="middle" font-family="Inter">MPU6050</text>
+      <text x="650" y="168" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">0x68 • IMU</text>
+      <line x1="650" y1="130" x2="650" y2="110" stroke="#3b82f6" stroke-width="2"/>
+      <line x1="640" y1="130" x2="640" y2="90" stroke="#22c55e" stroke-width="2"/>
+
+      <!-- SSD1306 -->
+      <rect x="770" y="130" width="100" height="50" rx="8" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+      <text x="820" y="152" fill="#22d3ee" font-size="11" font-weight="bold" text-anchor="middle" font-family="Inter">SSD1306</text>
+      <text x="820" y="168" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">0x3C • OLED</text>
+      <line x1="820" y1="130" x2="820" y2="110" stroke="#3b82f6" stroke-width="2"/>
+      <line x1="810" y1="130" x2="810" y2="90" stroke="#22c55e" stroke-width="2"/>
+    </svg>
+  </div>
+
+  <div class="component-grid">
+    <div class="comp-card" style="--card-accent: var(--green);">
+      <div class="comp-icon" style="background:rgba(34,197,94,0.12); color:var(--green);">✅</div>
+      <div style="font-weight:700; font-size:1.1rem; margin-bottom:0.5rem;">4 of 7 Components — Same as Simulation</div>
+      <p class="comp-purpose">MPU6050, SSD1306 OLED, Pushbutton, and the I2C bus wiring are <strong>identical</strong> to your Wokwi project. Zero changes needed for these.</p>
+    </div>
+    <div class="comp-card" style="--card-accent: var(--orange);">
+      <div class="comp-icon" style="background:rgba(249,115,22,0.12); color:var(--orange);">🔄</div>
+      <div style="font-weight:700; font-size:1.1rem; margin-bottom:0.5rem;">3 Components — Swapped for Real Hardware</div>
+      <p class="comp-purpose"><strong>Potentiometer → MAX30102</strong> (real HR/SpO₂)<br><strong>DHT22 → MLX90614</strong> (skin temperature)<br><strong>Buzzer → Vibration Motor</strong> (silent alert + MOSFET driver)</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== COMPONENTS TAB ==================== -->
+<div id="tab-components" class="tab-panel">
+  <div class="component-grid">
+
+    <!-- MAX30102 -->
+    <div class="comp-card" style="--card-accent: var(--red);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(239,68,68,0.12); color:var(--red);">❤️</div>
+        <div><div class="comp-name">MAX30102 — Pulse Oximeter</div><div class="comp-desc">Heart Rate + SpO₂ via optical PPG</div></div>
+      </div>
+      <p class="comp-purpose">Shines Red (660nm) + IR (880nm) LEDs through tissue, measures light absorption to calculate BPM and blood oxygen saturation.</p>
+      <table class="pin-table">
+        <tr><th>Sensor Pin</th><th>ESP32-S3</th><th>Wire</th></tr>
+        <tr><td>VIN</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td></tr>
+        <tr><td>GND</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td></tr>
+        <tr><td>SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td></tr>
+        <tr><td>SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td></tr>
+        <tr><td>INT</td><td>GPIO 2</td><td><span class="wire-color" style="background:#eab308"></span>Yellow (optional)</td></tr>
+      </table>
+      <div class="warning-box">
+        <span class="icon">🖐️</span> <strong>Use as finger-clip probe</strong>, not directly on wrist. Red/IR light needs thin tissue with dense capillaries. Attach via short cable to the wrist unit.
+      </div>
+    </div>
+
+    <!-- MLX90614 -->
+    <div class="comp-card" style="--card-accent: var(--orange);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(249,115,22,0.12); color:var(--orange);">🌡️</div>
+        <div><div class="comp-name">MLX90614 — IR Temperature</div><div class="comp-desc">Contactless skin temperature (GY-906 module)</div></div>
+      </div>
+      <p class="comp-purpose">Infrared thermopile measures skin surface temperature without contact. Reads ~31–34°C on wrist (add +3°C offset for estimated core body temp).</p>
+      <table class="pin-table">
+        <tr><th>Sensor Pin</th><th>ESP32-S3</th><th>Wire</th></tr>
+        <tr><td>VCC</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td></tr>
+        <tr><td>GND</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td></tr>
+        <tr><td>SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td></tr>
+        <tr><td>SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td></tr>
+      </table>
+      <div class="warning-box">
+        <span class="icon">⚡</span> <strong>CRITICAL: Buy the 3.3V version (MLX90614-BCC)</strong>. Many cheap GY-906 boards are 5V (BAA) with pull-ups to 5V — these will damage ESP32-S3's 3.3V GPIO pins. Check the listing carefully!
+      </div>
+      <div class="warning-box info" style="margin-top:0.5rem;">
+        <span class="icon">💡</span> <strong>Alternative: MAX30205</strong> (I2C 0x48, 3.3V native, ±0.1°C). Contact sensor designed for medical wearables — place metal pad against skin. No voltage trap.
+      </div>
+    </div>
+
+    <!-- MPU6050 -->
+    <div class="comp-card" style="--card-accent: var(--purple);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(168,85,247,0.12); color:var(--purple);">📐</div>
+        <div><div class="comp-name">MPU6050 — 6-Axis IMU</div><div class="comp-desc">Accelerometer + Gyroscope (GY-521 module)</div></div>
+      </div>
+      <p class="comp-purpose">Measures acceleration (XYZ) and rotation (XYZ) for fall detection. On wrist, must use 2-stage detection: impact spike + gyro stillness.</p>
+      <table class="pin-table">
+        <tr><th>Sensor Pin</th><th>ESP32-S3</th><th>Wire</th></tr>
+        <tr><td>VCC</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td></tr>
+        <tr><td>GND</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td></tr>
+        <tr><td>SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td></tr>
+        <tr><td>SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td></tr>
+        <tr><td>AD0</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black (tie LOW)</td></tr>
+      </table>
+      <div class="warning-box info">
+        <span class="icon">📌</span> <strong>AD0 must be tied to GND</strong> — do NOT leave it floating. This sets the I2C address to 0x68. Floating AD0 causes intermittent communication failures.
+      </div>
+    </div>
+
+    <!-- SSD1306 OLED -->
+    <div class="comp-card" style="--card-accent: var(--cyan);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(6,182,212,0.12); color:var(--cyan);">📺</div>
+        <div><div class="comp-name">SSD1306 OLED — 0.96" Display</div><div class="comp-desc">128×64 pixels, I2C, 4-pin module</div></div>
+      </div>
+      <p class="comp-purpose">Bedside/wrist status display showing vitals, alerts, and patient info. Self-illuminating pixels — readable in dim environments.</p>
+      <table class="pin-table">
+        <tr><th>Sensor Pin</th><th>ESP32-S3</th><th>Wire</th></tr>
+        <tr><td>VCC</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td></tr>
+        <tr><td>GND</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td></tr>
+        <tr><td>SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td></tr>
+        <tr><td>SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td></tr>
+      </table>
+      <div class="warning-box success">
+        <span class="icon">✅</span> Must be the <strong>4-pin I2C version</strong> (VCC, GND, SDA, SCL). Do NOT buy the 7-pin SPI version.
+      </div>
+    </div>
+
+    <!-- Vibration Motor -->
+    <div class="comp-card" style="--card-accent: var(--pink);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(236,72,153,0.12); color:var(--pink);">📳</div>
+        <div><div class="comp-name">Vibration Motor + Driver</div><div class="comp-desc">Coin motor with MOSFET/transistor circuit</div></div>
+      </div>
+      <p class="comp-purpose">Silent haptic alert — replaces the buzzer for wearable use. Pulses during clinical emergencies.</p>
+      <table class="pin-table">
+        <tr><th>Connection</th><th>Pin</th><th>Wire</th></tr>
+        <tr><td>GPIO → MOSFET Gate</td><td>GPIO 18</td><td><span class="wire-color" style="background:#ec4899"></span>Pink</td></tr>
+        <tr><td>MOSFET Source</td><td>GND</td><td><span class="wire-color" style="background:#333"></span>Black</td></tr>
+        <tr><td>Motor + → 3V3</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td></tr>
+        <tr><td>Motor − → MOSFET Drain</td><td>(via MOSFET)</td><td><span class="wire-color" style="background:#f97316"></span>Orange</td></tr>
+        <tr><td>Flyback Diode</td><td>Across motor</td><td>1N4148</td></tr>
+      </table>
+      <div class="warning-box">
+        <span class="icon">⚡</span> <strong>NEVER connect motor directly to GPIO!</strong> Motor draws 60–100mA (GPIO max = 40mA) and generates inductive kickback. Use a 2N7000 MOSFET or buy a "vibration motor module" with built-in driver.
+      </div>
+      <div class="driver-circuit">ESP32 GPIO 18 ──┐
+                  │
+             ┌────┴────┐
+             │  Gate    │
+    3V3 ──── Motor+ ─── │ 2N7000  │
+             Motor- ─── │  Drain  │
+             │          │ Source  │
+    Diode ◄──┘          └────┬────┘
+   (1N4148)                  │
+                            GND</div>
+    </div>
+
+    <!-- SOS Button -->
+    <div class="comp-card" style="--card-accent: var(--green);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(34,197,94,0.12); color:var(--green);">🆘</div>
+        <div><div class="comp-name">Pushbutton — SOS</div><div class="comp-desc">Patient emergency call button</div></div>
+      </div>
+      <p class="comp-purpose">Side button on wrist band. Uses internal pull-up — pressed = LOW signal = immediate emergency alert.</p>
+      <table class="pin-table">
+        <tr><th>Button Pin</th><th>ESP32-S3</th><th>Wire</th></tr>
+        <tr><td>1.l</td><td>GPIO 5</td><td><span class="wire-color" style="background:#fff"></span>White</td></tr>
+        <tr><td>2.l</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td></tr>
+      </table>
+      <div class="warning-box success">
+        <span class="icon">✅</span> Code uses <code>INPUT_PULLUP</code> — no external resistor needed. Same as simulation.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== FULL WIRING TABLE TAB ==================== -->
+<div id="tab-wiring" class="tab-panel">
+  <div class="full-table-wrap">
+    <h2>🔌 Complete Wiring Table — Every Connection</h2>
+    <table class="full-table">
+      <thead>
+        <tr><th>From (Sensor Pin)</th><th>To (ESP32-S3)</th><th>Wire Color</th><th>Type</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="5" style="background:var(--surface2); font-weight:700; color:var(--red); font-family:Inter;">❤️ MAX30102 — Pulse Oximeter (I2C 0x57)</td></tr>
+        <tr><td>MAX30102 : VIN</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td><td><span class="badge power">PWR</span></td><td>3.3V power</td></tr>
+        <tr><td>MAX30102 : GND</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td><td><span class="badge power">PWR</span></td><td>Ground</td></tr>
+        <tr><td>MAX30102 : SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td><td><span class="badge i2c">I2C</span></td><td>Shared I2C data</td></tr>
+        <tr><td>MAX30102 : SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td><td><span class="badge i2c">I2C</span></td><td>Shared I2C clock</td></tr>
+        <tr><td>MAX30102 : INT</td><td>GPIO 2</td><td><span class="wire-color" style="background:#eab308"></span>Yellow</td><td><span class="badge gpio">GPIO</span></td><td>Optional interrupt</td></tr>
+
+        <tr><td colspan="5" style="background:var(--surface2); font-weight:700; color:var(--orange); font-family:Inter;">🌡️ MLX90614 — IR Temperature (I2C 0x5A)</td></tr>
+        <tr><td>MLX90614 : VCC</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td><td><span class="badge power">PWR</span></td><td>⚠️ Must be 3.3V BCC version!</td></tr>
+        <tr><td>MLX90614 : GND</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td><td><span class="badge power">PWR</span></td><td>Ground</td></tr>
+        <tr><td>MLX90614 : SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td><td><span class="badge i2c">I2C</span></td><td>Shared I2C data</td></tr>
+        <tr><td>MLX90614 : SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td><td><span class="badge i2c">I2C</span></td><td>Shared I2C clock</td></tr>
+
+        <tr><td colspan="5" style="background:var(--surface2); font-weight:700; color:var(--purple); font-family:Inter;">📐 MPU6050 — IMU (I2C 0x68)</td></tr>
+        <tr><td>MPU6050 : VCC</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td><td><span class="badge power">PWR</span></td><td>3.3V power</td></tr>
+        <tr><td>MPU6050 : GND</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td><td><span class="badge power">PWR</span></td><td>Ground</td></tr>
+        <tr><td>MPU6050 : SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td><td><span class="badge i2c">I2C</span></td><td>Shared I2C data</td></tr>
+        <tr><td>MPU6050 : SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td><td><span class="badge i2c">I2C</span></td><td>Shared I2C clock</td></tr>
+        <tr><td>MPU6050 : AD0</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td><td><span class="badge gpio">GPIO</span></td><td>Tie LOW → address 0x68</td></tr>
+
+        <tr><td colspan="5" style="background:var(--surface2); font-weight:700; color:var(--cyan); font-family:Inter;">📺 SSD1306 — OLED Display (I2C 0x3C)</td></tr>
+        <tr><td>SSD1306 : VCC</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td><td><span class="badge power">PWR</span></td><td>3.3V power</td></tr>
+        <tr><td>SSD1306 : GND</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td><td><span class="badge power">PWR</span></td><td>Ground</td></tr>
+        <tr><td>SSD1306 : SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td><td><span class="badge i2c">I2C</span></td><td>Shared I2C data</td></tr>
+        <tr><td>SSD1306 : SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td><td><span class="badge i2c">I2C</span></td><td>Shared I2C clock</td></tr>
+
+        <tr><td colspan="5" style="background:var(--surface2); font-weight:700; color:var(--pink); font-family:Inter;">📳 Vibration Motor (via MOSFET Driver)</td></tr>
+        <tr><td>MOSFET Gate</td><td>GPIO 18</td><td><span class="wire-color" style="background:#ec4899"></span>Pink</td><td><span class="badge gpio">GPIO</span></td><td>Signal from ESP32</td></tr>
+        <tr><td>MOSFET Source</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td><td><span class="badge power">PWR</span></td><td>Ground</td></tr>
+        <tr><td>Motor (+)</td><td>3V3.1</td><td><span class="wire-color" style="background:#ef4444"></span>Red</td><td><span class="badge power">PWR</span></td><td>Motor power</td></tr>
+        <tr><td>Motor (−)</td><td>MOSFET Drain</td><td><span class="wire-color" style="background:#f97316"></span>Orange</td><td><span class="badge gpio">GPIO</span></td><td>Switched by MOSFET</td></tr>
+        <tr><td>1N4148 Diode</td><td>Across motor</td><td>—</td><td>—</td><td>Flyback protection</td></tr>
+
+        <tr><td colspan="5" style="background:var(--surface2); font-weight:700; color:var(--green); font-family:Inter;">🆘 SOS Pushbutton</td></tr>
+        <tr><td>Button : 1.l</td><td>GPIO 5</td><td><span class="wire-color" style="background:#fff"></span>White</td><td><span class="badge gpio">GPIO</span></td><td>INPUT_PULLUP</td></tr>
+        <tr><td>Button : 2.l</td><td>GND.1</td><td><span class="wire-color" style="background:#333"></span>Black</td><td><span class="badge power">PWR</span></td><td>Ground</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bus-diagram">
+    <h2>📊 GPIO Usage Summary</h2>
+    <table class="full-table">
+      <thead><tr><th>GPIO</th><th>Function</th><th>Direction</th><th>Component</th></tr></thead>
+      <tbody>
+        <tr><td>GPIO 2</td><td>Interrupt</td><td>INPUT</td><td>MAX30102 INT (optional)</td></tr>
+        <tr><td>GPIO 5</td><td>Digital</td><td>INPUT_PULLUP</td><td>SOS Pushbutton</td></tr>
+        <tr><td>GPIO 8</td><td>I2C SDA</td><td>BIDIR</td><td>All 4 I2C devices</td></tr>
+        <tr><td>GPIO 9</td><td>I2C SCL</td><td>BIDIR</td><td>All 4 I2C devices</td></tr>
+        <tr><td>GPIO 18</td><td>Digital</td><td>OUTPUT</td><td>Vibration motor (via MOSFET)</td></tr>
+      </tbody>
+    </table>
+    <p style="color:var(--text-dim); margin-top:1rem; font-size:0.85rem;">
+      <strong>Total GPIOs used: 5</strong> (out of 36 available). Plenty of room for future additions like BLE status LED, battery voltage ADC, etc.
+    </p>
+  </div>
+</div>
+
+<!-- ==================== PINOUT TAB ==================== -->
+<div id="tab-pinout" class="tab-panel">
+  <div class="esp-pinout">
+    <h2>📌 ESP32-S3 DevKitC-1 — Pin Assignment Map</h2>
+    <p style="color:var(--text-dim); margin-bottom:1.5rem; font-size:0.85rem;">Highlighted pins are used by your project. All others are free.</p>
+    <div class="pin-grid">
+      <div class="pin-left"><span class="pin-label">3.3V Power</span> <strong style="color:var(--red)">3V3</strong> <span class="pin-dot" style="background:var(--red)"></span></div>
+      <div class="pin-center">1</div>
+      <div class="pin-right"><span class="pin-dot" style="background:var(--red)"></span> <strong style="color:var(--red)">3V3</strong> <span class="pin-label">3.3V Power</span></div>
+
+      <div class="pin-left">RST <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">2</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 46</div>
+
+      <div class="pin-left pin-used"><span class="pin-label" style="color:var(--yellow)">MAX30102 INT</span> GPIO 2 <span class="pin-dot" style="background:var(--yellow)"></span></div>
+      <div class="pin-center">3</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 45</div>
+
+      <div class="pin-left">GPIO 3 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">4</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 44</div>
+
+      <div class="pin-left">GPIO 4 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">5</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 43</div>
+
+      <div class="pin-left pin-used"><span class="pin-label" style="color:var(--green)">SOS Button</span> GPIO 5 <span class="pin-dot" style="background:var(--green)"></span></div>
+      <div class="pin-center">6</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 42</div>
+
+      <div class="pin-left">GPIO 6 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">7</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 41</div>
+
+      <div class="pin-left">GPIO 7 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">8</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 40</div>
+
+      <div class="pin-left pin-used"><span class="pin-label" style="color:var(--green)">I2C SDA</span> <strong>GPIO 8</strong> <span class="pin-dot" style="background:var(--green)"></span></div>
+      <div class="pin-center">9</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 39</div>
+
+      <div class="pin-left pin-used"><span class="pin-label" style="color:var(--accent)">I2C SCL</span> <strong>GPIO 9</strong> <span class="pin-dot" style="background:var(--accent)"></span></div>
+      <div class="pin-center">10</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 38</div>
+
+      <div class="pin-left">GPIO 10 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">11</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 37</div>
+
+      <div class="pin-left">GPIO 11 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">12</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 36</div>
+
+      <div class="pin-left">GPIO 12 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">13</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 35</div>
+
+      <div class="pin-left">GPIO 13 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">14</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 0</div>
+
+      <div class="pin-left">GPIO 14 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">15</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 1</div>
+
+      <div class="pin-left">GPIO 15 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">16</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> 5V</div>
+
+      <div class="pin-left">GPIO 16 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">17</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GND <span class="pin-label">Ground</span></div>
+
+      <div class="pin-left">GPIO 17 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">18</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 21</div>
+
+      <div class="pin-left pin-used"><span class="pin-label" style="color:var(--pink)">Vib Motor</span> <strong>GPIO 18</strong> <span class="pin-dot" style="background:var(--pink)"></span></div>
+      <div class="pin-center">19</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 20</div>
+
+      <div class="pin-left">GPIO 19 <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">20</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> GPIO 47</div>
+
+      <div class="pin-left"><strong style="color:var(--red)">GND</strong> <span class="pin-dot" style="background:#555"></span></div>
+      <div class="pin-center">21</div>
+      <div class="pin-right"><span class="pin-dot" style="background:#555"></span> <strong style="color:var(--red)">GND</strong></div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SCHEMATIC TAB ==================== -->
+<div id="tab-schematic" class="tab-panel">
+  <div class="schematic-wrap">
+    <h2>⚡ System Architecture — Complete Wearable</h2>
+    <svg viewBox="0 0 800 500" class="schematic-svg">
+      <!-- ESP32-S3 Central Box -->
+      <rect x="300" y="180" width="200" height="140" rx="12" fill="#1e293b" stroke="#3b82f6" stroke-width="2.5"/>
+      <text x="400" y="210" fill="#60a5fa" font-size="16" font-weight="bold" text-anchor="middle" font-family="Inter">ESP32-S3</text>
+      <text x="400" y="230" fill="#8892a8" font-size="10" text-anchor="middle" font-family="JetBrains Mono">DevKitC-1 • 240MHz</text>
+      <text x="400" y="248" fill="#8892a8" font-size="10" text-anchor="middle" font-family="JetBrains Mono">WiFi + BLE 5.0</text>
+
+      <!-- I2C Label -->
+      <text x="400" y="272" fill="#22c55e" font-size="9" text-anchor="middle" font-family="JetBrains Mono">I2C: GPIO 8 (SDA) / GPIO 9 (SCL)</text>
+      <text x="400" y="288" fill="#ec4899" font-size="9" text-anchor="middle" font-family="JetBrains Mono">GPIO 5 (SOS) • GPIO 18 (Motor)</text>
+      <text x="400" y="304" fill="#eab308" font-size="9" text-anchor="middle" font-family="JetBrains Mono">GPIO 2 (INT) • BLE TX</text>
+
+      <!-- MAX30102 -->
+      <rect x="30" y="50" width="160" height="60" rx="10" fill="#1e293b" stroke="#ef4444" stroke-width="2"/>
+      <text x="110" y="75" fill="#f87171" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">❤️ MAX30102</text>
+      <text x="110" y="95" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">I2C 0x57 • Finger Clip</text>
+      <line x1="190" y1="80" x2="300" y2="200" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="230" y="130" fill="#22c55e" font-size="8" font-family="JetBrains Mono" transform="rotate(-30, 230, 130)">SDA/SCL</text>
+
+      <!-- MLX90614 -->
+      <rect x="30" y="160" width="160" height="60" rx="10" fill="#1e293b" stroke="#f97316" stroke-width="2"/>
+      <text x="110" y="185" fill="#fb923c" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">🌡️ MLX90614</text>
+      <text x="110" y="205" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">I2C 0x5A • Skin Temp</text>
+      <line x1="190" y1="190" x2="300" y2="230" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+      <!-- MPU6050 -->
+      <rect x="30" y="270" width="160" height="60" rx="10" fill="#1e293b" stroke="#a855f7" stroke-width="2"/>
+      <text x="110" y="295" fill="#c084fc" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">📐 MPU6050</text>
+      <text x="110" y="315" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">I2C 0x68 • Fall Detect</text>
+      <line x1="190" y1="300" x2="300" y2="260" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+      <!-- SSD1306 -->
+      <rect x="610" y="50" width="160" height="60" rx="10" fill="#1e293b" stroke="#06b6d4" stroke-width="2"/>
+      <text x="690" y="75" fill="#22d3ee" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">📺 SSD1306 OLED</text>
+      <text x="690" y="95" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">I2C 0x3C • 128×64</text>
+      <line x1="610" y1="80" x2="500" y2="200" stroke="#22c55e" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <text x="570" y="130" fill="#22c55e" font-size="8" font-family="JetBrains Mono" transform="rotate(30, 570, 130)">SDA/SCL</text>
+
+      <!-- Vibration Motor -->
+      <rect x="610" y="160" width="160" height="60" rx="10" fill="#1e293b" stroke="#ec4899" stroke-width="2"/>
+      <text x="690" y="185" fill="#f472b6" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">📳 Vib Motor</text>
+      <text x="690" y="205" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">GPIO 18 + MOSFET</text>
+      <line x1="610" y1="190" x2="500" y2="250" stroke="#ec4899" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+      <!-- SOS Button -->
+      <rect x="610" y="270" width="160" height="60" rx="10" fill="#1e293b" stroke="#22c55e" stroke-width="2"/>
+      <text x="690" y="295" fill="#4ade80" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">🆘 SOS Button</text>
+      <text x="690" y="315" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">GPIO 5 • PULLUP</text>
+      <line x1="610" y1="300" x2="500" y2="270" stroke="#4ade80" stroke-width="1.5" stroke-dasharray="4,3"/>
+
+      <!-- BLE Output -->
+      <rect x="300" y="400" width="200" height="50" rx="10" fill="#1e293b" stroke="#8b5cf6" stroke-width="2"/>
+      <text x="400" y="423" fill="#a78bfa" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">📱 BLE → Phone App</text>
+      <text x="400" y="440" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">JSON Telemetry Stream</text>
+      <line x1="400" y1="320" x2="400" y2="400" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="6,4"/>
+      <polygon points="400,398 395,388 405,388" fill="#8b5cf6"/>
+
+      <!-- Battery -->
+      <rect x="30" y="400" width="160" height="50" rx="10" fill="#1e293b" stroke="#eab308" stroke-width="2"/>
+      <text x="110" y="423" fill="#fbbf24" font-size="12" font-weight="bold" text-anchor="middle" font-family="Inter">🔋 LiPo 3.7V</text>
+      <text x="110" y="440" fill="#8892a8" font-size="9" text-anchor="middle" font-family="JetBrains Mono">500mAh + TP4056</text>
+      <line x1="190" y1="425" x2="300" y2="320" stroke="#eab308" stroke-width="1.5" stroke-dasharray="4,3"/>
+    </svg>
+  </div>
+</div>
+
+<!-- ==================== WARNINGS TAB ==================== -->
+<div id="tab-warnings" class="tab-panel">
+  <div class="component-grid">
+    <div class="comp-card" style="--card-accent: var(--red);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(239,68,68,0.12); color:var(--red);">⚡</div>
+        <div><div class="comp-name">MLX90614 Voltage Trap</div><div class="comp-desc">Most common beginner mistake</div></div>
+      </div>
+      <p class="comp-purpose">Many cheap GY-906 boards from Amazon are the <strong>5V (BAA)</strong> variant with pull-up resistors wired to 5V. Connecting this to the ESP32-S3's 3.3V I2C bus (GPIO 8/9) will push 5V into 3.3V-rated pins.</p>
+      <p class="comp-purpose"><strong>Result:</strong> Damaged GPIO pins, corrupted I2C bus (OLED + MPU6050 also stop working), possible permanent ESP32-S3 damage.</p>
+      <p class="comp-purpose"><strong>Fix:</strong> Buy specifically the <strong>MLX90614-BCC (3.3V)</strong> version. Or use <strong>MAX30205</strong> instead (native 3.3V, no voltage trap possible).</p>
+    </div>
+
+    <div class="comp-card" style="--card-accent: var(--red);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(239,68,68,0.12); color:var(--red);">🔥</div>
+        <div><div class="comp-name">Vibration Motor Direct GPIO</div><div class="comp-desc">Will burn your ESP32-S3</div></div>
+      </div>
+      <p class="comp-purpose">A coin vibration motor draws <strong>60–100mA at startup</strong>. ESP32-S3 GPIO pins are rated for <strong>maximum 40mA</strong> (recommended ≤20mA).</p>
+      <p class="comp-purpose">Additionally, DC motors generate <strong>inductive kickback</strong> — voltage spikes when the motor turns off — that can destroy the GPIO pin.</p>
+      <p class="comp-purpose"><strong>Fix:</strong> Use a <strong>2N7000 N-channel MOSFET</strong> (or 2N2222 NPN transistor) to switch the motor, with a <strong>1N4148 flyback diode</strong> across the motor terminals. Or buy a "vibration motor module" that includes the driver circuit on the board.</p>
+    </div>
+
+    <div class="comp-card" style="--card-accent: var(--orange);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(249,115,22,0.12); color:var(--orange);">🖐️</div>
+        <div><div class="comp-name">MAX30102 Wrist Placement</div><div class="comp-desc">Won't work reliably on bare wrist</div></div>
+      </div>
+      <p class="comp-purpose">The MAX30102 uses Red (660nm) + IR (880nm) LEDs. These wavelengths need <strong>thin tissue with dense capillaries</strong> (fingertip, earlobe).</p>
+      <p class="comp-purpose">On the wrist, thick skin + fat + tendons + bone scatter the signal. Commercial smartwatches use <strong>green LEDs (~530nm)</strong> with custom optics and heavy DSP — technology the bare module doesn't have.</p>
+      <p class="comp-purpose"><strong>Fix:</strong> Mount the MAX30102 as a <strong>finger-clip probe</strong> connected via a short cable to the wrist unit. This gives clinical-grade readings with minimal code complexity.</p>
+    </div>
+
+    <div class="comp-card" style="--card-accent: var(--yellow);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(234,179,8,0.12); color:var(--yellow);">🤚</div>
+        <div><div class="comp-name">Wrist Fall Detection False Alarms</div><div class="comp-desc">Arm swings trigger >2.5G spikes</div></div>
+      </div>
+      <p class="comp-purpose">On a belt/waist, a simple >2.5G threshold reliably detects falls. On the wrist, <strong>clapping, slamming a hand on a table, or swinging your arm quickly</strong> all exceed 2.5G.</p>
+      <p class="comp-purpose"><strong>Fix:</strong> Implement 2-stage verification in code:</p>
+      <p class="comp-purpose">1. Impact spike >3.0G on accelerometer<br>2. Followed by 5 seconds of near-zero angular velocity on <strong>gyroscope</strong> (confirming the patient is immobile, not just gesturing)</p>
+    </div>
+
+    <div class="comp-card" style="--card-accent: var(--purple);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(168,85,247,0.12); color:var(--purple);">🌡️</div>
+        <div><div class="comp-name">Skin vs Core Temperature</div><div class="comp-desc">Wrist reads 3°C lower than expected</div></div>
+      </div>
+      <p class="comp-purpose">Wrist skin temperature is typically <strong>31–34°C</strong>, not the 37°C core body temperature patients and doctors expect.</p>
+      <p class="comp-purpose"><strong>Fix:</strong> Add a static calibration offset in your code: <code>coreTempEstimate = skinTemp + 3.0;</code> — and clearly label it as "Estimated Core Temp" on the display/telemetry.</p>
+    </div>
+
+    <div class="comp-card" style="--card-accent: var(--green);">
+      <div class="comp-header">
+        <div class="comp-icon" style="background:rgba(34,197,94,0.12); color:var(--green);">📌</div>
+        <div><div class="comp-name">MPU6050 AD0 Pin</div><div class="comp-desc">Intermittent I2C failures if left floating</div></div>
+      </div>
+      <p class="comp-purpose">The AD0 pin determines the I2C address (LOW = 0x68, HIGH = 0x69). If left <strong>unconnected (floating)</strong>, it picks up electrical noise and randomly switches between addresses.</p>
+      <p class="comp-purpose"><strong>Result:</strong> MPU6050 works sometimes, fails randomly. Hard to debug because it seems intermittent.</p>
+      <p class="comp-purpose"><strong>Fix:</strong> Always <strong>tie AD0 to GND</strong> with a wire. This costs nothing and permanently fixes the address to 0x68.</p>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+
+</body>
+</html>
