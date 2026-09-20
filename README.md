@@ -47,6 +47,11 @@ Multi-sensor wrist-worn patient monitor with OLED display, haptic alerts, and st
 
 > ⚠️ **MLX90614**: Must use the **3.3V version (BCC)**, not the 5V version (BAA).
 > AD0 pin on MPU6050 must be tied to GND (sets address to 0x68).
+> 💡 **I2C Signal Integrity**: Use a pair of **4.7kΩ pull-up resistors** (one SDA->3.3V, one SCL->3.3V) on breadboard builds. Internal MCU pull-ups (~45kΩ) are weak for 4-device shared buses.
+
+---
+
+> ⚕️ **Disclaimer**: This is an IoMT engineering prototype / academic demonstrator. Empirical vitals calculations are standard research approximations and are not intended for clinical or medical diagnostic use.
 
 ---
 

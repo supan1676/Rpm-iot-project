@@ -16,6 +16,15 @@ Wiring (ESP32-S3):
   GPIO 18 -> Vibration Motor (via MOSFET gate)
   3.3V    -> Sensor VCC / VIN
   GND     -> Sensor GND (and MPU6050 AD0)
+
+Hardware Tip:
+  External 4.7kΩ pull-up resistors on SDA and SCL to 3.3V are strongly
+  recommended for 4-device breadboard buses to ensure crisp I2C edges.
+
+Disclaimer:
+  This firmware is an IoMT engineering prototype/demonstration project.
+  The empirical SpO2 algorithm (110 - 25*R) is a standard research approximation
+  and is not intended for certified clinical or medical diagnosis.
 """
 
 import framebuf
@@ -616,6 +625,8 @@ def main():
     alert_active = False
     boot_time = time.ticks_ms()
 
+    # Motor non-blocking timer & state
+    motor_off_time = 0
     fall_cooldown = 0
     subtick_count = 0
 
@@ -623,13 +634,15 @@ def main():
         tick_start = time.ticks_ms()
 
         # 1. Fast MPU6050 Fall Detection (25 Hz)
+        # Edge-triggered: prints once per impact event, then maintains cooldown
         if imu:
             try:
                 accel_mag = imu.accel_magnitude()
                 if accel_mag > FALL_THRESHOLD:
-                    fall_detected = True
+                    if not fall_detected:
+                        print("[ALERT] Fall impact detected! Peak accel = {:.2f}g".format(accel_mag))
+                        fall_detected = True
                     fall_cooldown = time.ticks_add(tick_start, 10_000)
-                    print("[ALERT] Fall impact detected! Peak accel = {:.2f}g".format(accel_mag))
             except Exception:
                 pass
 
@@ -643,7 +656,13 @@ def main():
         # 3. Fast SOS Button Sample
         sos_active = (sos_btn.value() == 0)
 
-        # Clear fall after 10s cooldown
+        # 4. Non-blocking Vibration Motor Timer
+        # Automatically turns off motor without stalling the 25Hz IMU loop
+        if motor_off_time != 0 and time.ticks_diff(tick_start, motor_off_time) >= 0:
+            motor.value(0)
+            motor_off_time = 0
+
+        # Auto-clear fall flag after 10s cooldown expires
         if fall_detected and time.ticks_diff(tick_start, fall_cooldown) > 0:
             fall_detected = False
 
@@ -679,9 +698,10 @@ def main():
             # C. Check Clinical Alerts
             alert_active = check_alerts(bpm, spo2, temp_c, fall_detected, sos_active)
 
-            # D. Trigger Vibration Motor if Alert
-            if alert_active:
-                pulse_motor(motor, MOTOR_PULSE_MS)
+            # D. Trigger Non-Blocking Vibration Motor Pulse
+            if alert_active and motor_off_time == 0:
+                motor.value(1)
+                motor_off_time = time.ticks_add(tick_start, MOTOR_PULSE_MS)
 
             # E. Update OLED Display
             try:
