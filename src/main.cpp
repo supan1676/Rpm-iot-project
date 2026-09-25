@@ -71,7 +71,8 @@ unsigned long lastFastTick = 0;
 // Run I2C Bus Scan & Print Results
 // ---------------------------------------------------------------------------
 void scanI2CBus() {
-    Serial.println(F("\n[1] Scanning I2C Bus on GPIO 8 (SDA) and GPIO 9 (SCL)..."));
+    Wire.setClock(50000); // Enforce 50 kHz before bus scan for MLX90614 SMBus compliance
+    Serial.println(F("\n[1] Scanning I2C Bus on GPIO 8 (SDA) and GPIO 9 (SCL) at 50 kHz..."));
     int count = 0;
 
     for (byte addr = 1; addr < 127; addr++) {
@@ -109,8 +110,8 @@ void setup() {
     Serial.println(F("       IoMT Hardware Diagnostic & Live Sensor Console"));
     Serial.println(F("=============================================================="));
 
-    // Initialize custom I2C pins for ESP32-S3
-    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 100000);
+    // Initialize custom I2C pins for ESP32-S3 at 50 kHz (SMBus safe for MLX90614)
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 50000);
 
     // Initialize GPIOs
     pinMode(BUTTON_PIN, INPUT_PULLUP);
@@ -141,6 +142,11 @@ void setup() {
     Serial.print(F("\n[3] Initializing Sensors:\n    - OLED Display (0x3C)... "));
     if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
         oledOK = true;
+        // CRITICAL FIX: Adafruit_SSD1306 internally forces I2C clock to 400 kHz.
+        // The MLX90614 is an SMBus device that fails at 400 kHz.
+        // We immediately restore the bus clock to 50 kHz for 100% reliable SMBus operation!
+        Wire.setClock(50000);
+
         display.clearDisplay();
         display.setTextColor(SSD1306_WHITE);
         display.setTextSize(1);
@@ -151,6 +157,7 @@ void setup() {
         display.setCursor(10, 48);
         display.println(F("Live Console Active"));
         display.display();
+        Wire.setClock(50000); // Re-assert 50 kHz after display() refresh
         Serial.println(F("[ONLINE]"));
     } else {
         Serial.println(F("[OFFLINE] (Allocation/Address failed)"));
@@ -169,11 +176,12 @@ void setup() {
 
     // 3. Initialize MLX90614 (0x5A)
     Serial.print(F("    - MLX90614 IR Thermometer (0x5A)... "));
+    Wire.setClock(50000); // Ensure 50 kHz clock for SMBus
     if (mlx.begin(0x5A, &Wire)) {
         mlxOK = true;
         Serial.println(F("[ONLINE]"));
     } else {
-        Serial.println(F("[OFFLINE] (Check VIN to 5V, GND, SCL=9, SDA=8)"));
+        Serial.println(F("[OFFLINE] (Check 3.3V power, GND, SCL=9, SDA=8)"));
     }
 
     // 4. Initialize MAX30102 (0x57)
@@ -227,6 +235,7 @@ void loop() {
             display.setCursor(12, 48);
             display.println(F("Motor pulsing 250ms"));
             display.display();
+            Wire.setClock(50000); // Re-assert 50 kHz after OLED refresh for MLX90614 SMBus
         }
     }
     lastBtnState = btnState;
@@ -287,6 +296,19 @@ void loop() {
     // 4. Live Terminal Report (every 1000ms)
     if (now - lastReportTime >= 1000) {
         lastReportTime = now;
+
+        // Enforce 50 kHz SMBus clock before communicating with MLX90614
+        Wire.setClock(50000);
+
+        // Auto-retry MLX90614 initialization if offline (e.g. after hot-fixing wiring or breadboard pins)
+        static unsigned long lastMlxRetry = 0;
+        if (!mlxOK && (now - lastMlxRetry >= 3000)) {
+            lastMlxRetry = now;
+            if (mlx.begin(0x5A, &Wire)) {
+                mlxOK = true;
+                Serial.println(F("\n>>> [RECOVERED] MLX90614 IR Thermometer online at 0x5A! <<<\n"));
+            }
+        }
 
         // Read MLX90614
         if (mlxOK) {
@@ -424,6 +446,7 @@ void loop() {
             display.print(F("/4"));
 
             display.display();
+            Wire.setClock(50000); // Re-assert 50 kHz after periodic OLED refresh
         }
     }
 }
