@@ -21,12 +21,8 @@ Multi-sensor wrist-worn patient monitor with OLED display, haptic alerts, and st
 
 | File | Purpose |
 |:---|:---|
-| `boot.py` | MicroPython boot config (disables debug, runs GC) |
-| `main.py` | Main application — sensor loop, alerting, display, telemetry |
-| `ssd1306.py` | SSD1306 OLED I2C driver (framebuf-based) |
-| `mpu6050.py` | MPU6050 IMU driver (accelerometer + gyro) |
-| `max30102.py` | MAX30102 pulse oximeter driver (BPM + SpO₂) |
-| `mlx90614.py` | MLX90614 IR temperature driver |
+| `main.py` | All-in-one application — embedded drivers, fall detection, vitals, display & telemetry |
+| `boot.py` | MicroPython boot config (disables debug UART output, runs GC) |
 | `test_sensors.py` | One-command hardware & I2C sensor diagnostic tool |
 | `upload_to_esp32.py` | Automated PC-to-ESP32 flasher with auto-port detection |
 | `wiring-guide.html` | Interactive hardware wiring reference |
@@ -106,13 +102,14 @@ esptool.py --chip esp32s3 --port COM6 write_flash -z 0x0 ESP32_GENERIC_S3-*.bin
 pip install mpremote
 mpremote connect COM6 cp boot.py :boot.py
 mpremote connect COM6 cp main.py :main.py
-mpremote connect COM6 cp ssd1306.py :ssd1306.py
-mpremote connect COM6 cp mpu6050.py :mpu6050.py
-mpremote connect COM6 cp max30102.py :max30102.py
-mpremote connect COM6 cp mlx90614.py :mlx90614.py
 ```
 
-Or use **Thonny IDE**: Open each file → Save As → MicroPython device.
+Or use **upload_to_esp32.py**:
+```bash
+python upload_to_esp32.py
+```
+
+Or use **Thonny IDE**: Open `main.py` → File → Save As → MicroPython device (`/main.py`).
 
 ### 3. Monitor Output
 

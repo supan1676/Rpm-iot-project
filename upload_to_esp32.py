@@ -82,10 +82,6 @@ def main():
 
     files = [
         "boot.py",
-        "ssd1306.py",
-        "mpu6050.py",
-        "max30102.py",
-        "mlx90614.py",
         "main.py"
     ]
     for fn in files:
