@@ -1,19 +1,19 @@
-# IoMT Remote Patient Monitoring (RPM) Node — MicroPython
+# IoMT Remote Patient Monitoring (RPM) Node
 
-An ESP32-S3 powered Internet of Medical Things (IoMT) node for continuous, non-invasive remote patient monitoring, fall detection, and emergency alerting. Written in **MicroPython**.
+An ESP32-S3 powered Internet of Medical Things (IoMT) node for continuous, non-invasive vital signs monitoring, fall detection, and emergency alerting. Built with **C++ / PlatformIO** (Arduino framework).
 
 ## 🏥 Overview
 
-Multi-sensor wrist-worn patient monitor with OLED display, haptic alerts, and structured JSON telemetry over serial.
+Multi-sensor wearable patient monitoring node with an onboard OLED display, dual-bus I2C architecture, and structured JSON telemetry over serial for dashboards and alert checkers.
 
 ### Key Features
-- **Heart Rate & SpO₂** — MAX30102 optical pulse oximeter (I2C 0x57)
-- **Skin Temperature** — MLX90614 contactless IR thermometer (I2C 0x5A)
-- **Fall Detection** — MPU6050 6-axis IMU, acceleration magnitude threshold (I2C 0x68)
-- **OLED Display** — SSD1306 128×64, real-time vitals dashboard (I2C 0x3C)
+- **Heart Rate & SpO₂** — MAX30102 optical pulse oximeter (I2C Bus 0: `0x57`)
+- **Body & Skin Temperature** — MLX90614 contactless IR thermometer (I2C Bus 0: `0x5A`)
+- **Motion & Fall Detection** — MPU-6050 6-axis IMU (Dedicated I2C Bus 1: `0x68` / `0x69`)
+- **OLED Display** — SSD1306 128×64, real-time vitals dashboard (I2C Bus 0: `0x3C`)
 - **SOS Emergency Button** — GPIO 5, internal pull-up, active LOW
-- **Haptic Alert** — Vibration motor via MOSFET on GPIO 18
-- **JSON Telemetry** — Serial output at 115200 baud
+- **Dual Hardware I2C Buses** — Dedicated bus for MPU-6050 to prevent bus congestion
+- **Telemetry Stream** — Formatted terminal card + compact single-line JSON stream at 115200 baud
 
 ---
 
@@ -21,111 +21,86 @@ Multi-sensor wrist-worn patient monitor with OLED display, haptic alerts, and st
 
 | File | Purpose |
 |:---|:---|
-| `main.py` | All-in-one application — embedded drivers, fall detection, vitals, display & telemetry |
-| `boot.py` | MicroPython boot config (disables debug UART output, runs GC) |
-| `test_sensors.py` | One-command hardware & I2C sensor diagnostic tool |
-| `upload_to_esp32.py` | Automated PC-to-ESP32 flasher with auto-port detection |
-| `wiring-guide.html` | Interactive hardware wiring reference |
+| `src/main.cpp` | Complete firmware — dual I2C buses, sensor drivers, fallback registers, OLED rendering, and JSON streaming |
+| `platformio.ini` | PlatformIO environment config for ESP32-S3-DevKitC-1-N8 |
+| `dashboard.html` | Browser-based live GUI connecting directly via WebSerial (no local server needed) |
+| `ai_decision_engine.py` | Python serial listener that evaluates vitals against baseline alert thresholds |
+| `wiring-guide.html` | Interactive hardware pinout and wiring reference |
 
 ---
 
 ## 🛠️ Hardware & Pin Configuration (ESP32-S3)
 
-| Component | Interface / Pin | I2C Address |
-|:---|:---|:---|
-| **SSD1306 OLED** | I2C (SDA: GPIO 8, SCL: GPIO 9) | `0x3C` |
-| **MPU6050 IMU** | I2C (SDA: GPIO 8, SCL: GPIO 9) | `0x68` |
-| **MAX30102 Pulse Ox** | I2C (SDA: GPIO 8, SCL: GPIO 9) | `0x57` |
-| **MLX90614 IR Temp** | I2C (SDA: GPIO 8, SCL: GPIO 9) | `0x5A` |
-| **SOS Pushbutton** | GPIO 5 (INPUT_PULLUP) | — |
-| **Vibration Motor** | GPIO 18 (OUTPUT via MOSFET) | — |
-| **MAX30102 INT** | GPIO 2 (optional) | — |
+### Primary I2C Bus (`Wire` - Bus 0 at 50 kHz)
+| Component | SDA Pin | SCL Pin | I2C Address | Notes |
+|:---|:---|:---|:---|:---|
+| **SSD1306 OLED** | GPIO 8 | GPIO 9 | `0x3C` | Real-time screen |
+| **MAX30102 Pulse Ox** | GPIO 8 | GPIO 9 | `0x57` | Pulse & SpO2 |
+| **MLX90614 IR Temp** | GPIO 8 | GPIO 9 | `0x5A` | 3.3V operation, SMBus compliant |
 
-> ⚠️ **MLX90614**: Must use the **3.3V version (BCC)**, not the 5V version (BAA).
-> AD0 pin on MPU6050 must be tied to GND (sets address to 0x68).
-> 💡 **I2C Signal Integrity**: Use a pair of **4.7kΩ pull-up resistors** (one SDA->3.3V, one SCL->3.3V) on breadboard builds. Internal MCU pull-ups (~45kΩ) are weak for 4-device shared buses.
+### Dedicated Secondary I2C Bus (`Wire1` - Bus 1 at 400 kHz)
+| Component | SDA Pin | SCL Pin | I2C Address | Notes |
+|:---|:---|:---|:---|:---|
+| **MPU-6050 IMU** | GPIO 17 | GPIO 18 | `0x68` / `0x69` | Dedicated bus for fast motion & fall tracking |
+
+### Peripherals
+| Component | Pin | Configuration | Notes |
+|:---|:---|:---|:---|
+| **SOS Pushbutton** | GPIO 5 | `INPUT_PULLUP` | Connect other side to GND (Active LOW) |
+
+> 💡 **Sensors & Power**: All sensor breakout boards operate on the 3.3V rail and include onboard I2C pull-up resistors.
 
 ---
 
-> ⚕️ **Disclaimer**: This is an IoMT engineering prototype / academic demonstrator. Empirical vitals calculations are standard research approximations and are not intended for clinical or medical diagnostic use.
+> ⚕️ **Disclaimer**: This is an educational and engineering prototype. Vital sign calculations are approximations and are not intended to diagnose disease or prescribe medical treatments.
 
 ---
 
 ## 📡 Telemetry Format
 
-JSON output over serial at `115200` baud, once per second:
+Single-line JSON output over serial at `115200` baud:
 
 ```json
-{
-  "bpm": 76,
-  "spo2": 98,
-  "temp_c": 36.8,
-  "fall": false,
-  "sos": false,
-  "alert": false,
-  "uptime_s": 42
-}
+[JSON] {"uptime_s":45,"device_id":"RPM-NODE-01","risk":"NORMAL","sensors":{"oled":true,"mpu":true,"mlx":true,"max":true,"active":4},"vitals":{"heart_rate":72,"spo2":98,"finger_on":true,"temp_core":36.6,"temp_skin":33.6,"temp_amb":26.1,"steps":24,"motion_g":1.02},"alerts":{"sos":false,"fall":false},"ai_context":"All vital signs within expected baseline."}
 ```
 
 ### Alert Thresholds
-| Condition | Threshold |
-|:---|:---|
-| Low Heart Rate | BPM < 50 |
-| High Heart Rate | BPM > 120 |
-| Low SpO₂ (Hypoxemia) | < 90% |
-| Fever | Core temp > 38.5°C |
-| Fall Detection | Acceleration > 2.5g |
+| Condition | Threshold | System Action |
+|:---|:---|:---|
+| Low Heart Rate | BPM < 50 | Warning flag — notify caregiver |
+| High Heart Rate | BPM > 120 | Warning flag — notify caregiver |
+| Low SpO₂ | < 90% | Warning flag — notify caregiver |
+| Elevated Temp | Core temp > 38.0°C | Warning flag — notify caregiver |
+| Fall Detection | Acceleration > 2.5g | Emergency alert — check on patient |
+| SOS Button | GPIO 5 pressed | Emergency alert — check on patient |
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Building & Flashing
 
-### Prerequisites
-- ESP32-S3-DevKitC-1 board
-- MicroPython firmware flashed ([download](https://micropython.org/download/ESP32_GENERIC_S3/))
-- [mpremote](https://docs.micropython.org/en/latest/reference/mpremote.html) or [Thonny IDE](https://thonny.org/)
+```powershell
+# Compile the firmware
+pio run
 
-### 1. Flash MicroPython Firmware
+# Flash to ESP32-S3 over COM6
+pio run -t upload --upload-port COM6
 
-```bash
-# Download the latest ESP32-S3 MicroPython firmware (.bin)
-# Then flash using esptool:
-pip install esptool
-esptool.py --chip esp32s3 --port COM6 erase_flash
-esptool.py --chip esp32s3 --port COM6 write_flash -z 0x0 ESP32_GENERIC_S3-*.bin
+# View live telemetry in terminal
+pio device monitor
 ```
 
-### 2. Upload Project Files
+### Live Monitoring Interfaces
 
-```bash
-# Using mpremote:
-pip install mpremote
-mpremote connect COM6 cp boot.py :boot.py
-mpremote connect COM6 cp main.py :main.py
-```
-
-Or use **upload_to_esp32.py**:
-```bash
-python upload_to_esp32.py
-```
-
-Or use **Thonny IDE**: Open `main.py` → File → Save As → MicroPython device (`/main.py`).
-
-### 3. Monitor Output
-
-```bash
-mpremote connect COM6 repl
-# Or any serial monitor at 115200 baud
-```
+1. **Terminal Stream**: Run `pio device monitor` to see real-time formatted vitals cards and raw JSON packets.
+2. **Web Dashboard (`dashboard.html`)**: Open `dashboard.html` in Chrome or Edge, click **Connect**, and view live vitals and threshold alert status without installing additional tools.
+3. **Threshold Alert Engine (`ai_decision_engine.py`)**: Run `python ai_decision_engine.py COM6` to inspect incoming packets and print status cards.
 
 ---
 
-## 📋 Clinical Alert Behavior
+## 📋 Alert Behavior
 
-When any alert condition is active:
-1. **OLED** — Top bar inverts to show `!! ALERT !!`
-2. **Vibration Motor** — Pulses 200ms per loop cycle
-3. **Serial** — `"alert": true` in JSON telemetry
-4. **Fall Detection** — Auto-clears after 10 second cooldown
+When any alert condition is met:
+1. **OLED Display** — Shows an emergency override screen (`EMERGENCY ALERT` / `SOS CALL` / `FALL ALERT`).
+2. **Serial Stream** — Immediately flags `"risk": "EMERGENCY"` or `"WARNING"` with an alert description.
+3. **Dashboard / Console** — Highlights the affected parameter and prompts the user to check on the patient.
 
-SOS button triggers immediate alert when pressed (active LOW, debounced).

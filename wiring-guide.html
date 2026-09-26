@@ -489,8 +489,8 @@
         <tr><td>SDA</td><td>GPIO 8</td><td><span class="wire-color" style="background:#22c55e"></span>Green</td></tr>
         <tr><td>SCL</td><td>GPIO 9</td><td><span class="wire-color" style="background:#3b82f6"></span>Blue</td></tr>
       </table>
-      <div class="warning-box">
-        <span class="icon">⚡</span> <strong>CRITICAL: Buy the 3.3V version (MLX90614-BCC)</strong>. Many cheap GY-906 boards are 5V (BAA) with pull-ups to 5V — these will damage ESP32-S3's 3.3V GPIO pins. Check the listing carefully!
+      <div class="warning-box info">
+        <span class="icon">💡</span> <strong>Power & Pull-ups:</strong> Connect VCC to the ESP32-S3's <strong>3.3V rail</strong>. Standard breakout modules operate reliably on 3.3V and already include onboard I2C pull-up resistors.
       </div>
       <div class="warning-box info" style="margin-top:0.5rem;">
         <span class="icon">💡</span> <strong>Alternative: MAX30205</strong> (I2C 0x48, 3.3V native, ±0.1°C). Contact sensor designed for medical wearables — place metal pad against skin. No voltage trap.
@@ -819,14 +819,13 @@
 <!-- ==================== WARNINGS TAB ==================== -->
 <div id="tab-warnings" class="tab-panel">
   <div class="component-grid">
-    <div class="comp-card" style="--card-accent: var(--red);">
+    <div class="comp-card" style="--card-accent: var(--primary);">
       <div class="comp-header">
-        <div class="comp-icon" style="background:rgba(239,68,68,0.12); color:var(--red);">⚡</div>
-        <div><div class="comp-name">MLX90614 Voltage Trap</div><div class="comp-desc">Most common beginner mistake</div></div>
+        <div class="comp-icon" style="background:rgba(59,130,246,0.12); color:var(--primary);">ℹ️</div>
+        <div><div class="comp-name">MLX90614 Clock & Power Note</div><div class="comp-desc">3.3V SMBus device</div></div>
       </div>
-      <p class="comp-purpose">Many cheap GY-906 boards from Amazon are the <strong>5V (BAA)</strong> variant with pull-up resistors wired to 5V. Connecting this to the ESP32-S3's 3.3V I2C bus (GPIO 8/9) will push 5V into 3.3V-rated pins.</p>
-      <p class="comp-purpose"><strong>Result:</strong> Damaged GPIO pins, corrupted I2C bus (OLED + MPU6050 also stop working), possible permanent ESP32-S3 damage.</p>
-      <p class="comp-purpose"><strong>Fix:</strong> Buy specifically the <strong>MLX90614-BCC (3.3V)</strong> version. Or use <strong>MAX30205</strong> instead (native 3.3V, no voltage trap possible).</p>
+      <p class="comp-purpose">Standard MLX90614 breakout boards run reliably from the ESP32-S3's <strong>3.3V rail</strong> with built-in pull-up resistors.</p>
+      <p class="comp-purpose"><strong>I2C Speed Note:</strong> The MLX90614 uses SMBus timing specifications and operates most reliably with an I2C clock speed of <strong>50 kHz</strong>.</p>
     </div>
 
     <div class="comp-card" style="--card-accent: var(--red);">

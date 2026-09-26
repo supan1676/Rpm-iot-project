@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-IoMT Autonomous AI / LLM Clinical Decision Engine
+IoMT Patient Vitals Monitor & Threshold Alert Engine
 Connects directly to the ESP32-S3 live serial stream (COM6) or simulated stream,
-parses the high-precision JSON telemetry packets, and performs automated
-clinical triage, risk assessment, and decision recommendations.
+parses JSON telemetry packets, and checks vitals against baseline thresholds
+to alert caregivers of abnormal readings or emergency events.
 """
 
 import sys
@@ -19,8 +19,8 @@ except ImportError:
 
 def evaluate_clinical_status(packet):
     """
-    Evaluates patient vitals using clinical thresholds (inspired by NEWS2 - National Early Warning Score)
-    and generates structured decision recommendations for healthcare providers or automated AI workflows.
+    Checks patient vitals against baseline safety thresholds
+    and generates clear alert notices for caregivers.
     """
     vitals = packet.get("vitals", {})
     alerts = packet.get("alerts", {})
@@ -38,73 +38,73 @@ def evaluate_clinical_status(packet):
 
     findings = []
     actions = []
-    risk_level = "GREEN (STABLE)"
+    risk_level = "GREEN (NORMAL)"
 
     # 1. Emergency Alerts
     if sos:
-        risk_level = "RED (CRITICAL EMERGENCY)"
-        findings.append("🚨 SOS Panic Button triggered by patient.")
-        actions.append("Dispatch rapid-response caregiver / emergency contact immediately.")
+        risk_level = "RED (EMERGENCY)"
+        findings.append("🚨 SOS Button pressed by patient.")
+        actions.append("Check on patient immediately.")
 
     if fall:
-        risk_level = "RED (CRITICAL EMERGENCY)"
-        findings.append(f"💥 High-G Fall impact detected ({motion_g:.2f} g).")
-        actions.append("Initiate automated voice check-in and alert bedside nursing staff.")
+        risk_level = "RED (EMERGENCY)"
+        findings.append(f"💥 High impact movement detected ({motion_g:.2f} g).")
+        actions.append("Check on patient immediately for possible fall.")
 
     # 2. Oxygen Saturation (SpO2)
     if finger_on:
         if spo2 < 88 and spo2 > 0:
-            risk_level = "RED (CRITICAL EMERGENCY)"
-            findings.append(f"🫁 Severe Hypoxemia: SpO2 critically low at {spo2}%.")
-            actions.append("Administer high-flow supplemental oxygen immediately.")
+            risk_level = "RED (EMERGENCY)"
+            findings.append(f"🫁 SpO2 reading very low: {spo2}%.")
+            actions.append("Vitals look abnormal — notify a caregiver or nurse immediately.")
         elif spo2 < 92 and spo2 > 0:
-            if risk_level != "RED (CRITICAL EMERGENCY)":
+            if risk_level != "RED (EMERGENCY)":
                 risk_level = "YELLOW (WARNING)"
-            findings.append(f"🫁 Mild Hypoxemia: SpO2 is {spo2}% (<92%).")
-            actions.append("Recheck sensor placement; prepare nasal cannula support.")
+            findings.append(f"🫁 SpO2 reading below target: {spo2}%.")
+            actions.append("Recheck sensor placement; notify caregiver if reading stays low.")
 
     # 3. Heart Rate
     if finger_on:
         if hr > 130:
-            risk_level = "RED (CRITICAL EMERGENCY)"
-            findings.append(f"❤️ Severe Tachycardia: Heart rate at {hr} BPM.")
-            actions.append("Check ECG for supraventricular tachycardia / atrial fibrillation.")
+            risk_level = "RED (EMERGENCY)"
+            findings.append(f"❤️ Pulse rate very high: {hr} BPM.")
+            actions.append("Vitals look abnormal — notify a caregiver.")
         elif hr > 100:
-            if risk_level != "RED (CRITICAL EMERGENCY)":
+            if risk_level != "RED (EMERGENCY)":
                 risk_level = "YELLOW (WARNING)"
-            findings.append(f"❤️ Tachycardia: Heart rate elevated at {hr} BPM.")
-            actions.append("Evaluate patient for fever, dehydration, or physical exertion.")
+            findings.append(f"❤️ Pulse rate elevated: {hr} BPM.")
+            actions.append("Check on patient; recheck vitals after resting.")
         elif hr < 45 and hr > 0:
-            risk_level = "RED (CRITICAL EMERGENCY)"
-            findings.append(f"❤️ Severe Bradycardia: Heart rate abnormally low at {hr} BPM.")
-            actions.append("Assess hemodynamic stability; notify attending physician.")
+            risk_level = "RED (EMERGENCY)"
+            findings.append(f"❤️ Pulse rate very low: {hr} BPM.")
+            actions.append("Vitals look abnormal — notify a caregiver.")
 
     # 4. Core Body Temperature
     if temp_core >= 39.0:
-        risk_level = "RED (CRITICAL EMERGENCY)"
-        findings.append(f"🌡️ High Fever / Hyperpyrexia: Core temp at {temp_core:.1f} °C.")
-        actions.append("Administer IV antipyretics and active cooling protocols.")
+        risk_level = "RED (EMERGENCY)"
+        findings.append(f"🌡️ High temperature reading: {temp_core:.1f} °C.")
+        actions.append("Vitals look abnormal — notify a caregiver.")
     elif temp_core >= 38.0:
-        if risk_level != "RED (CRITICAL EMERGENCY)":
+        if risk_level != "RED (EMERGENCY)":
             risk_level = "YELLOW (WARNING)"
-        findings.append(f"🌡️ Pyrexia / Fever: Core temp at {temp_core:.1f} °C.")
-        actions.append("Monitor temperature curve; screen for infection/sepsis.")
+        findings.append(f"🌡️ Temperature elevated: {temp_core:.1f} °C.")
+        actions.append("Monitor patient comfort; notify caregiver if fever persists.")
     elif temp_core > 0 and temp_core < 35.0:
-        if risk_level != "RED (CRITICAL EMERGENCY)":
+        if risk_level != "RED (EMERGENCY)":
             risk_level = "YELLOW (WARNING)"
-        findings.append(f"❄️ Hypothermia: Core temp low at {temp_core:.1f} °C.")
-        actions.append("Apply warm blankets; avoid cold fluid administration.")
+        findings.append(f"❄️ Temperature reading low: {temp_core:.1f} °C.")
+        actions.append("Check sensor placement; ensure patient is warm.")
 
     # 5. Fallback if all is normal
     if not findings:
-        findings.append("All measured physiological parameters are within standard baseline ranges.")
-        actions.append("Continue routine remote telemetry monitoring.")
+        findings.append("All measured vital signs are within normal baseline thresholds.")
+        actions.append("Continue routine monitoring.")
 
-    # Construct the Structured AI Decision Object
-    ai_decision = {
+    # Construct the Structured Alert Summary Object
+    alert_summary = {
         "timestamp": datetime.now().isoformat(),
         "uptime_seconds": uptime,
-        "overall_triage": risk_level,
+        "overall_status": risk_level,
         "patient_metrics": {
             "heart_rate_bpm": hr if finger_on else "UNATTACHED",
             "spo2_percent": spo2 if finger_on else "UNATTACHED",
@@ -113,22 +113,22 @@ def evaluate_clinical_status(packet):
             "motion_g": round(motion_g, 2),
             "hardware_health": f"{sensors.get('active', 0)}/4 sensors online"
         },
-        "clinical_findings": findings,
+        "findings": findings,
         "recommended_actions": actions
     }
 
-    return ai_decision
+    return alert_summary
 
 
-def print_ai_decision_card(decision):
-    """Prints a beautiful AI Triage Card in the terminal."""
-    triage = decision["overall_triage"]
-    metrics = decision["patient_metrics"]
+def print_alert_card(summary):
+    """Prints a clean, honest Vital Signs & Alert Card in the terminal."""
+    status = summary["overall_status"]
+    metrics = summary["patient_metrics"]
 
     print("\n" + "=" * 65)
-    print(f" 🤖 AI / LLM CLINICAL DECISION ENGINE — [{decision['timestamp'][:19]}]")
+    print(f" 📊 PATIENT VITALS & ALERT CHECKER — [{summary['timestamp'][:19]}]")
     print("=" * 65)
-    print(f"  PATIENT TRIAGE STATUS: {triage}")
+    print(f"  PATIENT STATUS       : {status}")
     print(f"  Hardware Health      : {metrics['hardware_health']}")
     print("-" * 65)
     print(f"  Vitals Snapshot:")
@@ -137,17 +137,17 @@ def print_ai_decision_card(decision):
     print(f"    • Body Temp   : {metrics['core_temp_c']} °C")
     print(f"    • Step Count  : {metrics['step_count']} steps | Motion: {metrics['motion_g']} g")
     print("-" * 65)
-    print("  📋 Clinical Findings:")
-    for f in decision["clinical_findings"]:
+    print("  📋 Threshold Observations:")
+    for f in summary["findings"]:
         print(f"    - {f}")
-    print("  💡 AI Recommended Actions:")
-    for a in decision["recommended_actions"]:
+    print("  💡 Caregiver Recommendations:")
+    for a in summary["recommended_actions"]:
         print(f"    ▶ {a}")
     print("=" * 65 + "\n")
 
 
 def listen_serial(port="COM6", baud=115200):
-    """Listens to the ESP32 serial stream and evaluates every JSON telemetry packet."""
+    """Listens to the ESP32 serial stream and checks every JSON telemetry packet."""
     if serial is None:
         print("[ERROR] pyserial is not installed. Install via: pip install pyserial")
         return
@@ -173,8 +173,8 @@ def listen_serial(port="COM6", baud=115200):
                 json_str = line[6:].strip()
                 try:
                     packet = json.loads(json_str)
-                    decision = evaluate_clinical_status(packet)
-                    print_ai_decision_card(decision)
+                    summary = evaluate_clinical_status(packet)
+                    print_alert_card(summary)
                 except json.JSONDecodeError as err:
                     print(f"[WARN] Failed to parse JSON: {err}")
     except KeyboardInterrupt:
@@ -186,3 +186,4 @@ def listen_serial(port="COM6", baud=115200):
 if __name__ == "__main__":
     port = sys.argv[1] if len(sys.argv) > 1 else "COM6"
     listen_serial(port)
+

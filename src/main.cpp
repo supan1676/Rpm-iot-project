@@ -13,7 +13,7 @@
  *   - Auto-boots immediately upon power-up with full hardware self-test
  *   - Fast 25 Hz sampling for IMU impact/fall detection and PPG pulse waveform
  *   - 1 Hz high-precision telemetry stream in both human card and machine-readable JSON formats
- *   - Direct feed into Web Dashboards and AI / LLM Clinical Decision Engines
+ *   - Direct feed into Web Dashboards and Threshold Alert Checkers
  *   - Non-blocking hot-plug auto-recovery for all sensors
  */
 
@@ -230,7 +230,7 @@ void mpuRawReadAccel(uint8_t addr, float &ax, float &ay, float &az) {
 void outputTelemetry(bool urgent = false) {
     unsigned long now = millis();
 
-    // 1. Calculate clinical risk classification for AI / LLM decision engine
+    // 1. Calculate status classification based on vital sign thresholds
     const char* riskLevel = "NORMAL";
     const char* clinicalSummary = "All vital signs within expected baseline.";
 
@@ -239,27 +239,27 @@ void outputTelemetry(bool urgent = false) {
         clinicalSummary = "PATIENT SOS BUTTON PRESSED! Immediate caregiver response required.";
     } else if (fallActive) {
         riskLevel = "EMERGENCY";
-        clinicalSummary = "FALL DETECTED! High-G impact spike recorded. Check patient mobility.";
+        clinicalSummary = "FALL DETECTED! High-G impact recorded. Check on patient.";
     } else if (fingerDetected && currentSpO2 > 0 && currentSpO2 < 90) {
         riskLevel = "WARNING";
-        clinicalSummary = "HYPOXEMIA ALERT: Oxygen saturation below 90%. Administer supplemental O2.";
+        clinicalSummary = "LOW SPO2 ALERT: Oxygen saturation below 90%. Vitals abnormal — notify caregiver.";
     } else if (fingerDetected && currentBpm > 120) {
         riskLevel = "WARNING";
-        clinicalSummary = "TACHYCARDIA: Elevated resting heart rate (>120 BPM).";
+        clinicalSummary = "ELEVATED HEART RATE: Pulse above 120 BPM. Check on patient.";
     } else if (fingerDetected && currentBpm > 0 && currentBpm < 50) {
         riskLevel = "WARNING";
-        clinicalSummary = "BRADYCARDIA: Abnormally low resting heart rate (<50 BPM).";
+        clinicalSummary = "LOW HEART RATE: Pulse below 50 BPM. Check on patient.";
     } else if (coreTempC >= 38.0f) {
         riskLevel = "WARNING";
-        clinicalSummary = "HYPERTHERMIA: Fever detected (>38.0 C). Patient requires cooling / antipyretics.";
+        clinicalSummary = "HIGH TEMPERATURE: Elevated temp (>38.0 C). Vitals abnormal — notify caregiver.";
     } else if (coreTempC > 0 && coreTempC < 35.0f) {
         riskLevel = "WARNING";
-        clinicalSummary = "HYPOTHERMIA: Core body temperature critically low (<35.0 C).";
+        clinicalSummary = "LOW TEMPERATURE: Below expected range (<35.0 C). Check sensor placement.";
     }
 
     int activeSensors = (oledOK ? 1 : 0) + (mpuOK ? 1 : 0) + (mlxOK ? 1 : 0) + (maxOK ? 1 : 0);
 
-    // 2. Machine-Readable Single-Line JSON (for Web Dashboards & AI/LLM ingestion)
+    // 2. Machine-Readable Single-Line JSON (for Web Dashboards & Threshold Checkers)
     Serial.print(F("[JSON] {"));
     Serial.print(F("\"uptime_s\":")); Serial.print(now / 1000);
     Serial.print(F(",\"device_id\":\"RPM-NODE-01\""));
@@ -523,7 +523,7 @@ void setup() {
 
     Serial.println(F("\n=============================================================="));
     Serial.println(F("    IoMT Smart Patient Monitoring Node (ESP32-S3 Auto-Boot)"));
-    Serial.println(F("    Target: Real Physical Sensors + AI/LLM Telemetry Stream"));
+    Serial.println(F("    Target: Real Physical Sensors + Real-Time Telemetry Stream"));
     Serial.println(F("=============================================================="));
 
     // 1. Initialize Primary I2C Bus 0 at 50 kHz for universal SMBus compliance

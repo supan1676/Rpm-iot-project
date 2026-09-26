@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IoMT Smart Patient Telemetry & AI Decision Dashboard</title>
+  <title>IoMT Smart Patient Telemetry & Alert Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -274,7 +274,7 @@
   <header>
     <div class="title-group">
       <h1>🩺 IoMT Smart Patient Monitoring Node</h1>
-      <p>Target: ESP32-S3 | Autonomous Auto-Boot Telemetry Stream & AI Decision Support</p>
+      <p>Target: ESP32-S3 | Autonomous Auto-Boot Telemetry Stream & Alert Rules</p>
     </div>
 
     <div class="controls">
@@ -351,11 +351,11 @@
     </div>
   </div>
 
-  <!-- AI / LLM Clinical Decision Engine Panel -->
+  <!-- Threshold Alert Rules Panel -->
   <div class="ai-box">
     <div class="ai-header">
       <div class="ai-title">
-        <span>🤖 AI / LLM Clinical Decision Support</span>
+        <span>📋 Patient Alert Rules & Threshold Status</span>
       </div>
       <div class="triage-tag triage-normal" id="aiTriage">NORMAL (STABLE)</div>
     </div>
@@ -363,7 +363,7 @@
       Waiting for telemetry packet from ESP32-S3 node...
     </div>
     <ul class="ai-actions" id="aiActions">
-      <li>Connect ESP32 via WebSerial to begin autonomous clinical evaluation.</li>
+      <li>Connect ESP32 via WebSerial to begin monitoring vitals.</li>
     </ul>
   </div>
 
@@ -509,10 +509,10 @@
         actionsEl.innerHTML += "<li>💥 EMERGENCY: Patient fall impact confirmed. Immediate bedside check needed.</li>";
       }
       if (v.finger_on && v.spo2 < 90 && v.spo2 > 0) {
-        actionsEl.innerHTML += "<li>⚠️ WARNING: Patient in acute hypoxemia. Check airway and oxygen delivery.</li>";
+        actionsEl.innerHTML += "<li>⚠️ WARNING: SpO2 reading low. Vitals look abnormal — notify a caregiver.</li>";
       }
       if (actionsEl.children.length === 0) {
-        actionsEl.innerHTML = "<li>Patient hemodynamically stable. Continue continuous remote monitoring.</li>";
+        actionsEl.innerHTML = "<li>Vitals within normal baseline ranges. Continue routine monitoring.</li>";
       }
     }
 
