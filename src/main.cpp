@@ -3,10 +3,10 @@
  * Target: VIREXON ESP32-S3 N16R8 Development Board
  * 
  * Hardware Under Test:
- *   - Robocraze 0.96" SSD1306 OLED (I2C: 0x3C, SDA=8, SCL=9)
- *   - Robocraze GY-521 MPU-6050 6-Axis IMU (I2C: 0x68 / 0x69, SDA=8, SCL=9)
- *   - Generic PZIN51001292 MLX90614 IR Thermometer (I2C: 0x5A, SDA=8, SCL=9)
- *   - TECHTONICS MAX30102 Pulse Oximeter (I2C: 0x57, SDA=8, SCL=9)
+ *   - Robocraze 0.96" SSD1306 OLED (I2C Bus 0: 0x3C, SDA=8, SCL=9)
+ *   - Robocraze GY-521 MPU-6050 6-Axis IMU (Dedicated I2C Bus 1: 0x68 / 0x69, SDA=17, SCL=18)
+ *   - Generic PZIN51001292 MLX90614 IR Thermometer (I2C Bus 0: 0x5A, SDA=8, SCL=9)
+ *   - TECHTONICS MAX30102 Pulse Oximeter (I2C Bus 0: 0x57, SDA=8, SCL=9)
  *   - Pushbutton (GPIO 5 to GND, Active LOW)
  * 
  * Features:
@@ -29,9 +29,14 @@
 #include <MAX30105.h>
 #include <ArduinoJson.h>
 
-// Pin definitions
+// Primary I2C Bus 0 (OLED, MLX90614, MAX30102)
 #define I2C_SDA_PIN     8
 #define I2C_SCL_PIN     9
+
+// Dedicated Secondary I2C Bus 1 (MPU-6050 IMU)
+#define MPU_SDA_PIN     17
+#define MPU_SCL_PIN     18
+
 #define BUTTON_PIN      5       // SOS Pushbutton (Internal PULLUP, connect other pin to GND)
 
 #define SCREEN_WIDTH    128
@@ -92,36 +97,58 @@ unsigned long lastSensorRetry = 0;
 // ---------------------------------------------------------------------------
 void scanI2CBus() {
     Wire.setClock(50000); // Enforce 50 kHz for MLX90614 SMBus safety
-    Serial.println(F("\n[I2C BUS SCAN] Scanning GPIO 8 (SDA) and GPIO 9 (SCL) at 50 kHz..."));
-    int count = 0;
+    Serial.println(F("\n[I2C BUS 0 SCAN] Scanning Primary Bus GPIO 8 (SDA) and GPIO 9 (SCL) at 50 kHz..."));
+    int count0 = 0;
 
     for (byte addr = 1; addr < 127; addr++) {
         Wire.beginTransmission(addr);
         byte error = Wire.endTransmission();
         if (error == 0) {
-            count++;
+            count0++;
             Serial.print(F("    -> Found device at 0x"));
             if (addr < 16) Serial.print(F("0"));
             Serial.print(addr, HEX);
             if (addr == 0x3C) Serial.println(F(" : SSD1306 OLED Display (128x64)"));
             else if (addr == 0x57) Serial.println(F(" : TECHTONICS MAX30102 PPG Pulse Oximeter"));
             else if (addr == 0x5A) Serial.println(F(" : MLX90614 Non-Contact IR Thermometer"));
-            else if (addr == 0x68) Serial.println(F(" : MPU-6050 6-Axis IMU (AD0=GND)"));
-            else if (addr == 0x69) Serial.println(F(" : MPU-6050 6-Axis IMU (AD0=HIGH/Floating)"));
             else Serial.println(F(" : Custom / Unknown I2C Device"));
         }
     }
 
-    if (count == 0) {
-        Serial.println(F("    [WARNING] No I2C devices responded! Check power (3.3V), GND, and SDA/SCL lines."));
+    if (count0 == 0) {
+        Serial.println(F("    [WARNING] No devices found on Bus 0 (GPIO 8/9)! Check 3.3V, GND, and lines."));
     } else {
-        Serial.print(F("    Total active I2C devices found: "));
-        Serial.println(count);
+        Serial.print(F("    Active devices on Bus 0: "));
+        Serial.println(count0);
+    }
+
+    Serial.println(F("\n[I2C BUS 1 SCAN] Scanning Dedicated MPU Bus GPIO 17 (SDA) and GPIO 18 (SCL)..."));
+    int count1 = 0;
+
+    for (byte addr = 1; addr < 127; addr++) {
+        Wire1.beginTransmission(addr);
+        byte error = Wire1.endTransmission();
+        if (error == 0) {
+            count1++;
+            Serial.print(F("    -> Found device at 0x"));
+            if (addr < 16) Serial.print(F("0"));
+            Serial.print(addr, HEX);
+            if (addr == 0x68) Serial.println(F(" : MPU-6050 6-Axis IMU (AD0=GND)"));
+            else if (addr == 0x69) Serial.println(F(" : MPU-6050 6-Axis IMU (AD0=HIGH/Floating)"));
+            else Serial.println(F(" : Custom Device"));
+        }
+    }
+
+    if (count1 == 0) {
+        Serial.println(F("    [WARNING] No device on Bus 1 (GPIO 17/18)! Check SDA=17, SCL=18, 3.3V, GND."));
+    } else {
+        Serial.print(F("    Active devices on Bus 1: "));
+        Serial.println(count1);
     }
 }
 
 // ---------------------------------------------------------------------------
-// RAW MPU-6050 Register I/O (bypasses Adafruit library for clone chips)
+// RAW MPU-6050 Register I/O via Wire1 (bypasses Adafruit library for clone chips)
 // ---------------------------------------------------------------------------
 #define MPU_REG_WHO_AM_I   0x75
 #define MPU_REG_PWR_MGMT_1 0x6B
@@ -129,18 +156,18 @@ void scanI2CBus() {
 #define MPU_REG_ACCEL_CFG  0x1C
 
 uint8_t mpuReadRegister(uint8_t addr, uint8_t reg) {
-    Wire.beginTransmission(addr);
-    Wire.write(reg);
-    Wire.endTransmission(false);
-    Wire.requestFrom(addr, (uint8_t)1);
-    return Wire.available() ? Wire.read() : 0xFF;
+    Wire1.beginTransmission(addr);
+    Wire1.write(reg);
+    Wire1.endTransmission(false);
+    Wire1.requestFrom(addr, (uint8_t)1);
+    return Wire1.available() ? Wire1.read() : 0xFF;
 }
 
 void mpuWriteRegister(uint8_t addr, uint8_t reg, uint8_t value) {
-    Wire.beginTransmission(addr);
-    Wire.write(reg);
-    Wire.write(value);
-    Wire.endTransmission();
+    Wire1.beginTransmission(addr);
+    Wire1.write(reg);
+    Wire1.write(value);
+    Wire1.endTransmission();
 }
 
 bool mpuRawInit(uint8_t addr) {
@@ -173,20 +200,20 @@ bool mpuRawInit(uint8_t addr) {
         return false;
     }
 
-    Serial.println(F("    [RAW DIAG] MPU-6050 clone initialized via raw registers!"));
+    Serial.println(F("    [RAW DIAG] MPU-6050 clone initialized via raw registers on Bus 1!"));
     return true;
 }
 
 void mpuRawReadAccel(uint8_t addr, float &ax, float &ay, float &az) {
-    Wire.beginTransmission(addr);
-    Wire.write(MPU_REG_ACCEL_XOUT);
-    Wire.endTransmission(false);
-    Wire.requestFrom(addr, (uint8_t)6);
+    Wire1.beginTransmission(addr);
+    Wire1.write(MPU_REG_ACCEL_XOUT);
+    Wire1.endTransmission(false);
+    Wire1.requestFrom(addr, (uint8_t)6);
 
-    if (Wire.available() >= 6) {
-        int16_t rawX = (Wire.read() << 8) | Wire.read();
-        int16_t rawY = (Wire.read() << 8) | Wire.read();
-        int16_t rawZ = (Wire.read() << 8) | Wire.read();
+    if (Wire1.available() >= 6) {
+        int16_t rawX = (Wire1.read() << 8) | Wire1.read();
+        int16_t rawY = (Wire1.read() << 8) | Wire1.read();
+        int16_t rawZ = (Wire1.read() << 8) | Wire1.read();
         // ±8g range: LSB sensitivity = 4096 LSB/g
         ax = rawX / 4096.0f;
         ay = rawY / 4096.0f;
@@ -309,7 +336,7 @@ void outputTelemetry(bool urgent = false) {
         Serial.print(stepCount);
         Serial.println(fallActive ? F("  [!!! FALL IMPACT DETECTED !!!]") : F("  (Normal Mobility)"));
     } else {
-        Serial.println(F("OFFLINE (Check Pin 3=SCL, Pin 4=SDA, AD0=GND)"));
+        Serial.println(F("OFFLINE (Check Pin 3=SCL to GPIO 18, Pin 4=SDA to GPIO 17, AD0=GND)"));
     }
 
     // Peripherals & Alert Flags
@@ -435,31 +462,31 @@ void updateSensorsHotplug(unsigned long now) {
         }
     }
 
-    // 2. MPU-6050 Discovery (try 0x68 and 0x69)
+    // 2. MPU-6050 Discovery on Wire1 (GPIO 17 SDA, GPIO 18 SCL; try 0x68 and 0x69)
     if (!mpuOK) {
         uint8_t mpuFound = 0;
-        Wire.beginTransmission(0x68);
-        if (Wire.endTransmission() == 0) mpuFound = 0x68;
+        Wire1.beginTransmission(0x68);
+        if (Wire1.endTransmission() == 0) mpuFound = 0x68;
         else {
-            Wire.beginTransmission(0x69);
-            if (Wire.endTransmission() == 0) mpuFound = 0x69;
+            Wire1.beginTransmission(0x69);
+            if (Wire1.endTransmission() == 0) mpuFound = 0x69;
         }
 
         if (mpuFound != 0) {
-            if (mpu.begin(mpuFound, &Wire)) {
+            if (mpu.begin(mpuFound, &Wire1)) {
                 mpuOK = true;
                 mpuRawMode = false;
                 mpuAddress = mpuFound;
                 mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
                 mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-                Serial.print(F(">>> [HOT-PLUG] MPU-6050 IMU connected at 0x"));
+                Serial.print(F(">>> [HOT-PLUG] MPU-6050 IMU connected on Bus 1 at 0x"));
                 Serial.print(mpuAddress, HEX);
                 Serial.println(F("! (Adafruit driver) <<<"));
             } else if (mpuRawInit(mpuFound)) {
                 mpuOK = true;
                 mpuRawMode = true;
                 mpuAddress = mpuFound;
-                Serial.print(F(">>> [HOT-PLUG] MPU-6050 clone connected at 0x"));
+                Serial.print(F(">>> [HOT-PLUG] MPU-6050 clone connected on Bus 1 at 0x"));
                 Serial.print(mpuAddress, HEX);
                 Serial.println(F("! (Raw register mode) <<<"));
             }
@@ -499,17 +526,21 @@ void setup() {
     Serial.println(F("    Target: Real Physical Sensors + AI/LLM Telemetry Stream"));
     Serial.println(F("=============================================================="));
 
-    // 1. Initialize I2C Bus at 50 kHz for universal SMBus compliance
+    // 1. Initialize Primary I2C Bus 0 at 50 kHz for universal SMBus compliance
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN, 50000);
     Wire.setTimeOut(25); // 25ms timeout prevents any hanging on loose breadboard wires
 
-    // 2. Configure Peripherals
+    // 2. Initialize Dedicated Secondary I2C Bus 1 for MPU-6050 on GPIO 17 & 18
+    Wire1.begin(MPU_SDA_PIN, MPU_SCL_PIN, 400000);
+    Wire1.setTimeOut(25);
+
+    // 3. Configure Peripherals
     pinMode(BUTTON_PIN, INPUT_PULLUP);
 
-    // 3. Boot Self-Test
+    // 4. Boot Self-Test
     Serial.println(F("\n[1] Running Hardware Self-Test:"));
 
-    // 4. Test SOS Pushbutton State
+    // 5. Test SOS Pushbutton State
     Serial.print(F("    Testing SOS Pushbutton on GPIO 5... "));
     if (digitalRead(BUTTON_PIN) == HIGH) {
         Serial.println(F("[OK] Idle (RELEASED / HIGH)"));
@@ -548,18 +579,18 @@ void setup() {
         Serial.println(F("[OFFLINE] (No physical response at 0x3C)"));
     }
 
-    // 7. Initialize MPU-6050 IMU (tries both 0x68 and 0x69)
-    Serial.print(F("    - MPU-6050 6-Axis IMU (0x68 / 0x69)... "));
+    // 7. Initialize MPU-6050 IMU on Wire1 (tries both 0x68 and 0x69)
+    Serial.print(F("    - MPU-6050 6-Axis IMU on GPIO 17/18 (0x68 / 0x69)... "));
     uint8_t mpuFound = 0;
-    Wire.beginTransmission(0x68);
-    if (Wire.endTransmission() == 0) mpuFound = 0x68;
+    Wire1.beginTransmission(0x68);
+    if (Wire1.endTransmission() == 0) mpuFound = 0x68;
     else {
-        Wire.beginTransmission(0x69);
-        if (Wire.endTransmission() == 0) mpuFound = 0x69;
+        Wire1.beginTransmission(0x69);
+        if (Wire1.endTransmission() == 0) mpuFound = 0x69;
     }
 
     if (mpuFound != 0) {
-        if (mpu.begin(mpuFound, &Wire)) {
+        if (mpu.begin(mpuFound, &Wire1)) {
             mpuOK = true;
             mpuRawMode = false;
             mpuAddress = mpuFound;
@@ -584,7 +615,7 @@ void setup() {
             }
         }
     } else {
-        Serial.println(F("[OFFLINE] (No I2C ACK — Check Pin 3=SCL, Pin 4=SDA, AD0 to GND)"));
+        Serial.println(F("[OFFLINE] (No I2C ACK on GPIO 17/18 — Check SDA=17, SCL=18, AD0 to GND)"));
     }
 
     // 8. Initialize MLX90614 Contactless IR Thermometer (0x5A)
