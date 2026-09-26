@@ -43,6 +43,7 @@ MAX30105 max30102;
 // Detection flags
 bool oledOK = false;
 bool mpuOK  = false;
+uint8_t mpuAddress = 0x68;
 bool mlxOK  = false;
 bool maxOK  = false;
 
@@ -86,7 +87,8 @@ void scanI2CBus() {
             if (addr == 0x3C) Serial.println(F(" : SSD1306 OLED Display"));
             else if (addr == 0x57) Serial.println(F(" : TECHTONICS MAX30102 PPG"));
             else if (addr == 0x5A) Serial.println(F(" : MLX90614 IR Thermometer"));
-            else if (addr == 0x68) Serial.println(F(" : MPU6050 6-Axis IMU"));
+            else if (addr == 0x68) Serial.println(F(" : MPU6050 6-Axis IMU (AD0=GND)"));
+            else if (addr == 0x69) Serial.println(F(" : MPU6050 6-Axis IMU (AD0=HIGH/Floating)"));
             else Serial.println(F(" : Unknown I2C device"));
         }
     }
@@ -170,15 +172,32 @@ void setup() {
         Serial.println(F("[OFFLINE] (Not physically connected at 0x3C)"));
     }
 
-    // 2. Initialize MPU6050 (0x68)
-    Serial.print(F("    - MPU6050 IMU (0x68)... "));
-    if (mpu.begin(0x68, &Wire)) {
-        mpuOK = true;
-        mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-        mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-        Serial.println(F("[ONLINE]"));
+    // 2. Initialize MPU6050 (try 0x68 and 0x69)
+    Serial.print(F("    - MPU6050 IMU (0x68 / 0x69)... "));
+    uint8_t mpuFound = 0;
+    Wire.beginTransmission(0x68);
+    if (Wire.endTransmission() == 0) mpuFound = 0x68;
+    else {
+        Wire.beginTransmission(0x69);
+        if (Wire.endTransmission() == 0) mpuFound = 0x69;
+    }
+
+    if (mpuFound != 0) {
+        if (mpu.begin(mpuFound, &Wire)) {
+            mpuOK = true;
+            mpuAddress = mpuFound;
+            mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+            mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+            Serial.print(F("[ONLINE at 0x"));
+            Serial.print(mpuAddress, HEX);
+            Serial.println(F("]"));
+        } else {
+            Serial.print(F("[OFFLINE] (Responded at 0x"));
+            Serial.print(mpuFound, HEX);
+            Serial.println(F(" but begin() failed - clone WHO_AM_I)"));
+        }
     } else {
-        Serial.println(F("[OFFLINE] (Check 3.3V, GND, AD0 to GND)"));
+        Serial.println(F("[OFFLINE] (No electrical ACK at 0x68 or 0x69)"));
     }
 
     // 3. Initialize MLX90614 (0x5A)
@@ -232,6 +251,7 @@ void loop() {
         motorOffTime = now + 250; // Pulse for 250ms
 
         Serial.println(F("\n>>> [BUTTON EVENT] GPIO 5 Pressed! Pulsing vibration motor on GPIO 18! <<<"));
+        scanI2CBus(); // Re-scan I2C bus live on button press
 
         if (oledOK) {
             display.clearDisplay();
@@ -324,13 +344,26 @@ void loop() {
                 }
             }
 
-            // Check if MPU6050 was plugged in
+            // Check if MPU6050 was plugged in (try both 0x68 and 0x69)
             if (!mpuOK) {
-                if (mpu.begin(0x68, &Wire)) {
-                    mpuOK = true;
-                    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-                    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-                    Serial.println(F("\n>>> [CONNECTED] MPU6050 IMU detected at 0x68! <<<\n"));
+                uint8_t mpuFound = 0;
+                Wire.beginTransmission(0x68);
+                if (Wire.endTransmission() == 0) mpuFound = 0x68;
+                else {
+                    Wire.beginTransmission(0x69);
+                    if (Wire.endTransmission() == 0) mpuFound = 0x69;
+                }
+
+                if (mpuFound != 0) {
+                    if (mpu.begin(mpuFound, &Wire)) {
+                        mpuOK = true;
+                        mpuAddress = mpuFound;
+                        mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+                        mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+                        Serial.print(F("\n>>> [CONNECTED] MPU6050 IMU initialized at 0x"));
+                        Serial.print(mpuAddress, HEX);
+                        Serial.println(F("! <<<\n"));
+                    }
                 }
             }
 
@@ -375,17 +408,26 @@ void loop() {
         Serial.println(oledOK ? F("ONLINE (Displaying dashboard)") : F("OFFLINE"));
 
         // MPU6050 Status
-        Serial.print(F("  [MPU6050 0x68]  : "));
+        Serial.print(F("  [MPU6050 "));
         if (mpuOK) {
+            Serial.print(F("0x"));
+            Serial.print(mpuAddress, HEX);
+            Serial.print(F("]  : ONLINE | Mag="));
             sensors_event_t a, g, temp;
             mpu.getEvent(&a, &g, &temp);
             float mag = sqrt(sq(a.acceleration.x) + sq(a.acceleration.y) + sq(a.acceleration.z)) / 9.80665f;
-            Serial.print(F("ONLINE | Mag="));
             Serial.print(mag, 2);
             Serial.print(F("g | Steps="));
             Serial.println(stepCount);
         } else {
-            Serial.println(F("OFFLINE"));
+            Serial.print(F("0x68/69] : OFFLINE"));
+            Wire.beginTransmission(0x68);
+            byte e68 = Wire.endTransmission();
+            Wire.beginTransmission(0x69);
+            byte e69 = Wire.endTransmission();
+            if (e68 == 0) Serial.println(F(" (ACK at 0x68, driver WHO_AM_I failed)"));
+            else if (e69 == 0) Serial.println(F(" (ACK at 0x69, driver WHO_AM_I failed)"));
+            else Serial.println(F(" (No electrical response on SDA/SCL)"));
         }
 
         // MLX90614 Status
