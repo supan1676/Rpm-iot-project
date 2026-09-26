@@ -138,29 +138,36 @@ void setup() {
     // Run bus scan
     scanI2CBus();
 
-    // 1. Initialize OLED (0x3C)
+    // 1. Initialize OLED (0x3C) - Verify physical device ACK first!
     Serial.print(F("\n[3] Initializing Sensors:\n    - OLED Display (0x3C)... "));
-    if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-        oledOK = true;
-        // CRITICAL FIX: Adafruit_SSD1306 internally forces I2C clock to 400 kHz.
-        // The MLX90614 is an SMBus device that fails at 400 kHz.
-        // We immediately restore the bus clock to 50 kHz for 100% reliable SMBus operation!
-        Wire.setClock(50000);
+    Wire.beginTransmission(0x3C);
+    if (Wire.endTransmission() == 0) {
+        if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+            oledOK = true;
+            // CRITICAL FIX: Adafruit_SSD1306 internally forces I2C clock to 400 kHz.
+            // The MLX90614 is an SMBus device that fails at 400 kHz.
+            // We immediately restore the bus clock to 50 kHz for 100% reliable SMBus operation!
+            Wire.setClock(50000);
 
-        display.clearDisplay();
-        display.setTextColor(SSD1306_WHITE);
-        display.setTextSize(1);
-        display.setCursor(14, 16);
-        display.println(F("IoMT Diagnostic"));
-        display.setCursor(20, 32);
-        display.println(F("HARDWARE OK"));
-        display.setCursor(10, 48);
-        display.println(F("Live Console Active"));
-        display.display();
-        Wire.setClock(50000); // Re-assert 50 kHz after display() refresh
-        Serial.println(F("[ONLINE]"));
+            display.clearDisplay();
+            display.setTextColor(SSD1306_WHITE);
+            display.setTextSize(1);
+            display.setCursor(14, 16);
+            display.println(F("IoMT Diagnostic"));
+            display.setCursor(20, 32);
+            display.println(F("HARDWARE OK"));
+            display.setCursor(10, 48);
+            display.println(F("Live Console Active"));
+            display.display();
+            Wire.setClock(50000); // Re-assert 50 kHz after display() refresh
+            Serial.println(F("[ONLINE]"));
+        } else {
+            oledOK = false;
+            Serial.println(F("[OFFLINE] (Allocation failed)"));
+        }
     } else {
-        Serial.println(F("[OFFLINE] (Allocation/Address failed)"));
+        oledOK = false;
+        Serial.println(F("[OFFLINE] (Not physically connected at 0x3C)"));
     }
 
     // 2. Initialize MPU6050 (0x68)
@@ -297,16 +304,54 @@ void loop() {
     if (now - lastReportTime >= 1000) {
         lastReportTime = now;
 
-        // Enforce 50 kHz SMBus clock before communicating with MLX90614
+        // Enforce 50 kHz SMBus clock before communicating with sensors
         Wire.setClock(50000);
 
-        // Auto-retry MLX90614 initialization if offline (e.g. after hot-fixing wiring or breadboard pins)
-        static unsigned long lastMlxRetry = 0;
-        if (!mlxOK && (now - lastMlxRetry >= 3000)) {
-            lastMlxRetry = now;
-            if (mlx.begin(0x5A, &Wire)) {
-                mlxOK = true;
-                Serial.println(F("\n>>> [RECOVERED] MLX90614 IR Thermometer online at 0x5A! <<<\n"));
+        // Auto-detect offline sensors every 3s if newly plugged into breadboard
+        static unsigned long lastSensorRetry = 0;
+        if (now - lastSensorRetry >= 3000) {
+            lastSensorRetry = now;
+
+            // Check if OLED was plugged in
+            if (!oledOK) {
+                Wire.beginTransmission(0x3C);
+                if (Wire.endTransmission() == 0) {
+                    if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+                        oledOK = true;
+                        Wire.setClock(50000);
+                        Serial.println(F("\n>>> [CONNECTED] OLED Display detected at 0x3C! <<<\n"));
+                    }
+                }
+            }
+
+            // Check if MPU6050 was plugged in
+            if (!mpuOK) {
+                if (mpu.begin(0x68, &Wire)) {
+                    mpuOK = true;
+                    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+                    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
+                    Serial.println(F("\n>>> [CONNECTED] MPU6050 IMU detected at 0x68! <<<\n"));
+                }
+            }
+
+            // Check if MLX90614 was plugged in
+            if (!mlxOK) {
+                Wire.setClock(50000);
+                if (mlx.begin(0x5A, &Wire)) {
+                    mlxOK = true;
+                    Serial.println(F("\n>>> [CONNECTED] MLX90614 IR Thermometer detected at 0x5A! <<<\n"));
+                }
+            }
+
+            // Check if MAX30102 was plugged in
+            if (!maxOK) {
+                if (max30102.begin(Wire, I2C_SPEED_STANDARD)) {
+                    maxOK = true;
+                    max30102.setup(0x1F, 4, 2, 400, 411, 4096);
+                    max30102.setPulseAmplitudeRed(0x24);
+                    max30102.setPulseAmplitudeIR(0x24);
+                    Serial.println(F("\n>>> [CONNECTED] MAX30102 Pulse Oximeter detected at 0x57! <<<\n"));
+                }
             }
         }
 
