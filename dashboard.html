@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IoMT Smart Patient Telemetry & AI Decision Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --surface: rgba(18, 26, 44, 0.7);
+      --surface-border: rgba(255, 255, 255, 0.08);
+      --primary: #3b82f6;
+      --accent: #06b6d4;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at 10% 20%, #0f172a 0%, var(--bg) 90%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--surface-border);
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .title-group h1 {
+      font-size: 24px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #60a5fa, #38bdf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .title-group p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 14px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb, #0284c7);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 18px rgba(37, 99, 235, 0.45);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--surface-border);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #64748b;
+    }
+    .dot.connected {
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.7; }
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--surface);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--surface-border);
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .card-value {
+      font-size: 38px;
+      font-weight: 800;
+      color: #fff;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .card-unit {
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+
+    .card-subtext {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Sensor Health Grid */
+    .sensor-badges {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .badge {
+      background: var(--surface);
+      border: 1px solid var(--surface-border);
+      padding: 12px;
+      border-radius: 12px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge.online {
+      border-color: rgba(16, 185, 129, 0.4);
+      background: rgba(16, 185, 129, 0.08);
+      color: var(--success);
+    }
+    .badge.offline {
+      border-color: rgba(239, 68, 68, 0.3);
+      background: rgba(239, 68, 68, 0.05);
+      color: #94a3b8;
+    }
+
+    /* AI Decision Box */
+    .ai-box {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.9));
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .ai-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .ai-title {
+      font-size: 18px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #93c5fd;
+    }
+
+    .triage-tag {
+      padding: 6px 14px;
+      border-radius: 30px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .triage-normal { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .triage-warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .triage-critical { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); animation: pulse 1s infinite; }
+
+    .ai-findings {
+      background: rgba(0, 0, 0, 0.25);
+      border-radius: 10px;
+      padding: 14px 18px;
+      margin-bottom: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .ai-actions {
+      font-size: 14px;
+      color: #cbd5e1;
+      padding-left: 20px;
+      line-height: 1.7;
+    }
+
+    /* Terminal output */
+    .terminal-drawer {
+      background: #000;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #10b981;
+      max-height: 160px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="title-group">
+      <h1>🩺 IoMT Smart Patient Monitoring Node</h1>
+      <p>Target: ESP32-S3 | Autonomous Auto-Boot Telemetry Stream & AI Decision Support</p>
+    </div>
+
+    <div class="controls">
+      <div class="status-pill">
+        <span class="dot" id="connDot"></span>
+        <span id="connLabel">Disconnected</span>
+      </div>
+      <button class="btn btn-primary" id="btnConnect" onclick="toggleConnection()">
+        🔌 Connect ESP32 (COM6)
+      </button>
+    </div>
+  </header>
+
+  <!-- Hardware Health Status -->
+  <div class="sensor-badges">
+    <div class="badge" id="badgeOled">OLED (0x3C)<br><span id="txtOled">OFFLINE</span></div>
+    <div class="badge" id="badgeMpu">MPU-6050 (0x68/69)<br><span id="txtMpu">OFFLINE</span></div>
+    <div class="badge" id="badgeMlx">MLX90614 (0x5A)<br><span id="txtMlx">OFFLINE</span></div>
+    <div class="badge" id="badgeMax">MAX30102 (0x57)<br><span id="txtMax">OFFLINE</span></div>
+  </div>
+
+  <!-- Primary Vitals Grid -->
+  <div class="grid">
+    <!-- Heart Rate -->
+    <div class="card">
+      <div class="card-header">
+        <span>❤️ Heart Rate (PPG)</span>
+        <span id="lblFinger">No Finger</span>
+      </div>
+      <div class="card-value">
+        <span id="valHr">--</span>
+        <span class="card-unit">BPM</span>
+      </div>
+      <div class="card-subtext" id="subHr">Place finger on MAX30102</div>
+    </div>
+
+    <!-- Blood Oxygen (SpO2) -->
+    <div class="card">
+      <div class="card-header">
+        <span>🫁 Blood Oxygen Saturation</span>
+        <span>SpO2</span>
+      </div>
+      <div class="card-value">
+        <span id="valSpo2">--</span>
+        <span class="card-unit">%</span>
+      </div>
+      <div class="card-subtext" id="subSpo2">Target: 95% - 100%</div>
+    </div>
+
+    <!-- Core Body Temperature -->
+    <div class="card">
+      <div class="card-header">
+        <span>🌡️ Core Body Temp</span>
+        <span>MLX90614</span>
+      </div>
+      <div class="card-value">
+        <span id="valTemp">--.-</span>
+        <span class="card-unit">°C</span>
+      </div>
+      <div class="card-subtext" id="subTemp">Surface: --.- °C | Ambient: --.- °C</div>
+    </div>
+
+    <!-- Motion & Steps -->
+    <div class="card">
+      <div class="card-header">
+        <span>🚶 Patient Mobility</span>
+        <span>MPU-6050</span>
+      </div>
+      <div class="card-value">
+        <span id="valSteps">0</span>
+        <span class="card-unit">Steps</span>
+      </div>
+      <div class="card-subtext" id="subMotion">G-Force: 1.00 g (Resting)</div>
+    </div>
+  </div>
+
+  <!-- AI / LLM Clinical Decision Engine Panel -->
+  <div class="ai-box">
+    <div class="ai-header">
+      <div class="ai-title">
+        <span>🤖 AI / LLM Clinical Decision Support</span>
+      </div>
+      <div class="triage-tag triage-normal" id="aiTriage">NORMAL (STABLE)</div>
+    </div>
+    <div class="ai-findings" id="aiFindings">
+      Waiting for telemetry packet from ESP32-S3 node...
+    </div>
+    <ul class="ai-actions" id="aiActions">
+      <li>Connect ESP32 via WebSerial to begin autonomous clinical evaluation.</li>
+    </ul>
+  </div>
+
+  <!-- Raw Telemetry Terminal Stream -->
+  <div class="terminal-drawer" id="terminalLog">ESP32-S3 Live Console Stream (Awaiting Connection)...</div>
+
+  <script>
+    let port = null;
+    let reader = null;
+    let keepReading = false;
+    let buffer = "";
+
+    async function toggleConnection() {
+      if (port) {
+        keepReading = false;
+        if (reader) await reader.cancel();
+        await port.close();
+        port = null;
+        updateStatus(false);
+        return;
+      }
+
+      if (!("serial" in navigator)) {
+        alert("WebSerial is not supported in this browser. Please use Google Chrome, Microsoft Edge, or Opera.");
+        return;
+      }
+
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        updateStatus(true);
+        readLoop();
+      } catch (err) {
+        console.error("Connection error:", err);
+      }
+    }
+
+    function updateStatus(connected) {
+      const dot = document.getElementById("connDot");
+      const label = document.getElementById("connLabel");
+      const btn = document.getElementById("btnConnect");
+
+      if (connected) {
+        dot.className = "dot connected";
+        label.textContent = "Streaming Live";
+        btn.textContent = "Disconnect";
+        btn.style.background = "#475569";
+      } else {
+        dot.className = "dot";
+        label.textContent = "Disconnected";
+        btn.textContent = "🔌 Connect ESP32 (COM6)";
+        btn.style.background = "linear-gradient(135deg, #2563eb, #0284c7)";
+      }
+    }
+
+    async function readLoop() {
+      keepReading = true;
+      const textDecoder = new TextDecoderStream();
+      const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
+      reader = textDecoder.readable.getReader();
+
+      const term = document.getElementById("terminalLog");
+
+      while (keepReading) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          buffer += value;
+          const lines = buffer.split("\n");
+          buffer = lines.pop(); // Keep incomplete line
+
+          for (let line of lines) {
+            line = line.trim();
+            if (!line) continue;
+
+            // Log to terminal drawer
+            term.textContent += line + "\n";
+            term.scrollTop = term.scrollHeight;
+
+            // Detect structured JSON packet
+            if (line.startsWith("[JSON]")) {
+              try {
+                const jsonStr = line.substring(6).trim();
+                const packet = JSON.parse(jsonStr);
+                renderTelemetry(packet);
+              } catch (e) {
+                console.warn("JSON parse err:", e);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function renderTelemetry(data) {
+      const v = data.vitals || {};
+      const s = data.sensors || {};
+      const a = data.alerts || {};
+
+      // 1. Hardware Health Badges
+      updateBadge("badgeOled", "txtOled", s.oled);
+      updateBadge("badgeMpu", "txtMpu", s.mpu);
+      updateBadge("badgeMlx", "txtMlx", s.mlx);
+      updateBadge("badgeMax", "txtMax", s.max);
+
+      // 2. Vitals
+      if (v.finger_on && v.heart_rate > 0) {
+        document.getElementById("valHr").textContent = v.heart_rate;
+        document.getElementById("valSpo2").textContent = v.spo2;
+        document.getElementById("lblFinger").textContent = "Finger Attached";
+        document.getElementById("lblFinger").style.color = "#34d399";
+        document.getElementById("subHr").textContent = "Sinus Rhythm Detected";
+      } else {
+        document.getElementById("valHr").textContent = "--";
+        document.getElementById("valSpo2").textContent = "--";
+        document.getElementById("lblFinger").textContent = "No Finger";
+        document.getElementById("lblFinger").style.color = "#94a3b8";
+        document.getElementById("subHr").textContent = "Place finger on MAX30102";
+      }
+
+      if (v.temp_core > 0) {
+        document.getElementById("valTemp").textContent = v.temp_core.toFixed(1);
+        document.getElementById("subTemp").textContent = `Skin: ${v.temp_skin.toFixed(1)} °C | Ambient: ${v.temp_amb.toFixed(1)} °C`;
+      }
+
+      document.getElementById("valSteps").textContent = v.steps || 0;
+      document.getElementById("subMotion").textContent = `G-Force: ${(v.motion_g || 1).toFixed(2)} g | ${a.fall ? "FALL DETECTED!" : "Stable"}`;
+
+      // 3. AI / LLM Decision Box
+      const triage = data.risk || "NORMAL";
+      const tag = document.getElementById("aiTriage");
+      tag.textContent = triage;
+      tag.className = "triage-tag " + (triage === "EMERGENCY" ? "triage-critical" : (triage === "WARNING" ? "triage-warning" : "triage-normal"));
+
+      document.getElementById("aiFindings").textContent = data.ai_context || "All parameters within standard baseline ranges.";
+
+      const actionsEl = document.getElementById("aiActions");
+      actionsEl.innerHTML = "";
+      if (a.sos) {
+        actionsEl.innerHTML += "<li>🚨 EMERGENCY: Caregiver alert triggered via patient SOS button.</li>";
+      }
+      if (a.fall) {
+        actionsEl.innerHTML += "<li>💥 EMERGENCY: Patient fall impact confirmed. Immediate bedside check needed.</li>";
+      }
+      if (v.finger_on && v.spo2 < 90 && v.spo2 > 0) {
+        actionsEl.innerHTML += "<li>⚠️ WARNING: Patient in acute hypoxemia. Check airway and oxygen delivery.</li>";
+      }
+      if (actionsEl.children.length === 0) {
+        actionsEl.innerHTML = "<li>Patient hemodynamically stable. Continue continuous remote monitoring.</li>";
+      }
+    }
+
+    function updateBadge(badgeId, textId, isOnline) {
+      const b = document.getElementById(badgeId);
+      const t = document.getElementById(textId);
+      if (isOnline) {
+        b.className = "badge online";
+        t.textContent = "ONLINE (Active)";
+      } else {
+        b.className = "badge offline";
+        t.textContent = "OFFLINE";
+      }
+    }
+  </script>
+</body>
+</html>
