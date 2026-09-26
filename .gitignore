@@ -3,3 +3,7 @@ __pycache__/
 .vscode/
 .thonny/
 .pio/
+*.bin
+*.elf
+lib/
+include/

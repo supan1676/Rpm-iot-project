@@ -8,7 +8,6 @@
  *   - Generic PZIN51001292 MLX90614 IR Thermometer (I2C: 0x5A, SDA=8, SCL=9)
  *   - TECHTONICS MAX30102 Pulse Oximeter (I2C: 0x57, SDA=8, SCL=9)
  *   - Pushbutton (GPIO 5 to GND, Active LOW)
- *   - Haptic Vibration Motor (GPIO 18, Active HIGH)
  * 
  * Features:
  *   - Auto-boots immediately upon power-up with full hardware self-test
@@ -34,7 +33,6 @@
 #define I2C_SDA_PIN     8
 #define I2C_SCL_PIN     9
 #define BUTTON_PIN      5       // SOS Pushbutton (Internal PULLUP, connect other pin to GND)
-#define VIBRATION_PIN   18      // Haptic Vibration Motor
 
 #define SCREEN_WIDTH    128
 #define SCREEN_HEIGHT   64
@@ -50,6 +48,7 @@ MAX30105 max30102;
 bool oledOK = false;
 bool mpuOK  = false;
 uint8_t mpuAddress = 0x68;
+bool mpuRawMode = false; // true = bypassing Adafruit lib, using raw register I/O
 bool mlxOK  = false;
 bool maxOK  = false;
 
@@ -74,7 +73,7 @@ bool sosActive = false;
 unsigned long sosClearTime = 0;
 bool fallActive = false;
 unsigned long fallClearTime = 0;
-unsigned long motorOffTime = 0;
+
 
 // Heart rate tracking
 #define BPM_BUFFER_SIZE 4
@@ -86,13 +85,7 @@ unsigned long lastReportTime = 0;
 unsigned long lastFastTick = 0;
 unsigned long lastSensorRetry = 0;
 
-// ---------------------------------------------------------------------------
-// Non-blocking Vibration Pulse
-// ---------------------------------------------------------------------------
-void triggerMotor(unsigned long durationMs) {
-    digitalWrite(VIBRATION_PIN, HIGH);
-    motorOffTime = millis() + durationMs;
-}
+
 
 // ---------------------------------------------------------------------------
 // I2C Bus Scanner
@@ -124,6 +117,83 @@ void scanI2CBus() {
     } else {
         Serial.print(F("    Total active I2C devices found: "));
         Serial.println(count);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RAW MPU-6050 Register I/O (bypasses Adafruit library for clone chips)
+// ---------------------------------------------------------------------------
+#define MPU_REG_WHO_AM_I   0x75
+#define MPU_REG_PWR_MGMT_1 0x6B
+#define MPU_REG_ACCEL_XOUT 0x3B
+#define MPU_REG_ACCEL_CFG  0x1C
+
+uint8_t mpuReadRegister(uint8_t addr, uint8_t reg) {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    Wire.endTransmission(false);
+    Wire.requestFrom(addr, (uint8_t)1);
+    return Wire.available() ? Wire.read() : 0xFF;
+}
+
+void mpuWriteRegister(uint8_t addr, uint8_t reg, uint8_t value) {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    Wire.write(value);
+    Wire.endTransmission();
+}
+
+bool mpuRawInit(uint8_t addr) {
+    // 1. Read WHO_AM_I for diagnostics
+    uint8_t whoami = mpuReadRegister(addr, MPU_REG_WHO_AM_I);
+    Serial.print(F("    [RAW DIAG] WHO_AM_I register (0x75) = 0x"));
+    if (whoami < 16) Serial.print(F("0"));
+    Serial.println(whoami, HEX);
+
+    if (whoami == 0xFF || whoami == 0x00) {
+        Serial.println(F("    [RAW DIAG] Chip not responding to register reads."));
+        return false;
+    }
+
+    // 2. Wake up: clear SLEEP bit in PWR_MGMT_1 (write 0x00)
+    mpuWriteRegister(addr, MPU_REG_PWR_MGMT_1, 0x00);
+    delay(50);
+
+    // 3. Set accelerometer range to ±8g (same as Adafruit config)
+    mpuWriteRegister(addr, MPU_REG_ACCEL_CFG, 0x10); // 0x10 = ±8g
+
+    // 4. Verify wake-up by re-reading PWR_MGMT_1
+    uint8_t pwr = mpuReadRegister(addr, MPU_REG_PWR_MGMT_1);
+    Serial.print(F("    [RAW DIAG] PWR_MGMT_1 after wake = 0x"));
+    if (pwr < 16) Serial.print(F("0"));
+    Serial.println(pwr, HEX);
+
+    if (pwr & 0x40) {
+        Serial.println(F("    [RAW DIAG] SLEEP bit still set — chip may be damaged."));
+        return false;
+    }
+
+    Serial.println(F("    [RAW DIAG] MPU-6050 clone initialized via raw registers!"));
+    return true;
+}
+
+void mpuRawReadAccel(uint8_t addr, float &ax, float &ay, float &az) {
+    Wire.beginTransmission(addr);
+    Wire.write(MPU_REG_ACCEL_XOUT);
+    Wire.endTransmission(false);
+    Wire.requestFrom(addr, (uint8_t)6);
+
+    if (Wire.available() >= 6) {
+        int16_t rawX = (Wire.read() << 8) | Wire.read();
+        int16_t rawY = (Wire.read() << 8) | Wire.read();
+        int16_t rawZ = (Wire.read() << 8) | Wire.read();
+        // ±8g range: LSB sensitivity = 4096 LSB/g
+        ax = rawX / 4096.0f;
+        ay = rawY / 4096.0f;
+        az = rawZ / 4096.0f;
+    } else {
+        ax = ay = 0.0f;
+        az = 1.0f; // Default to 1g (gravity)
     }
 }
 
@@ -244,9 +314,7 @@ void outputTelemetry(bool urgent = false) {
 
     // Peripherals & Alert Flags
     Serial.print(F("  [PERIPHERALS]   : SOS Button="));
-    Serial.print(sosActive ? F("ACTIVE [PRESSED!]") : F("IDLE"));
-    Serial.print(F("  |  Motor="));
-    Serial.println(digitalRead(VIBRATION_PIN) == HIGH ? F("VIBRATING") : F("OFF"));
+    Serial.println(sosActive ? F("ACTIVE [PRESSED!]") : F("IDLE"));
     Serial.println(F("==============================================================\n"));
 }
 
@@ -275,7 +343,7 @@ void updateOLED() {
 
         display.setTextSize(1);
         display.setCursor(10, 48);
-        display.println(F("Haptic Alarm Active"));
+        display.println(F("ALERT ACTIVE!"));
         display.display();
         Wire.setClock(50000);
         return;
@@ -380,12 +448,20 @@ void updateSensorsHotplug(unsigned long now) {
         if (mpuFound != 0) {
             if (mpu.begin(mpuFound, &Wire)) {
                 mpuOK = true;
+                mpuRawMode = false;
                 mpuAddress = mpuFound;
                 mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
                 mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-                Serial.print(F(">>> [HOT-PLUG] MPU-6050 IMU connected and initialized at 0x"));
+                Serial.print(F(">>> [HOT-PLUG] MPU-6050 IMU connected at 0x"));
                 Serial.print(mpuAddress, HEX);
-                Serial.println(F("! <<<"));
+                Serial.println(F("! (Adafruit driver) <<<"));
+            } else if (mpuRawInit(mpuFound)) {
+                mpuOK = true;
+                mpuRawMode = true;
+                mpuAddress = mpuFound;
+                Serial.print(F(">>> [HOT-PLUG] MPU-6050 clone connected at 0x"));
+                Serial.print(mpuAddress, HEX);
+                Serial.println(F("! (Raw register mode) <<<"));
             }
         }
     }
@@ -429,16 +505,9 @@ void setup() {
 
     // 2. Configure Peripherals
     pinMode(BUTTON_PIN, INPUT_PULLUP);
-    pinMode(VIBRATION_PIN, OUTPUT);
-    digitalWrite(VIBRATION_PIN, LOW);
 
-    // 3. Boot Haptic Self-Test (150ms vibration pulse)
+    // 3. Boot Self-Test
     Serial.println(F("\n[1] Running Hardware Self-Test:"));
-    Serial.print(F("    Testing Haptic Vibration Motor on GPIO 18... "));
-    triggerMotor(150);
-    delay(160);
-    digitalWrite(VIBRATION_PIN, LOW);
-    Serial.println(F("[OK] Functional"));
 
     // 4. Test SOS Pushbutton State
     Serial.print(F("    Testing SOS Pushbutton on GPIO 5... "));
@@ -492,19 +561,30 @@ void setup() {
     if (mpuFound != 0) {
         if (mpu.begin(mpuFound, &Wire)) {
             mpuOK = true;
+            mpuRawMode = false;
             mpuAddress = mpuFound;
             mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
             mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
             Serial.print(F("[ONLINE at 0x"));
             Serial.print(mpuAddress, HEX);
-            Serial.println(F("]"));
+            Serial.println(F("] (Adafruit driver OK)"));
         } else {
-            Serial.print(F("[OFFLINE] (Device ACKed at 0x"));
-            Serial.print(mpuFound, HEX);
-            Serial.println(F(" but driver init failed)"));
+            Serial.print(F("[INFO] Adafruit driver rejected chip at 0x"));
+            Serial.println(mpuFound, HEX);
+            Serial.println(F("    Attempting RAW register fallback (clone chip workaround)..."));
+            if (mpuRawInit(mpuFound)) {
+                mpuOK = true;
+                mpuRawMode = true;
+                mpuAddress = mpuFound;
+                Serial.print(F("    [ONLINE at 0x"));
+                Serial.print(mpuAddress, HEX);
+                Serial.println(F("] (Raw register mode — clone chip)"));
+            } else {
+                Serial.println(F("    [OFFLINE] Raw init also failed — chip may be damaged."));
+            }
         }
     } else {
-        Serial.println(F("[OFFLINE] (Check Pin 3=SCL, Pin 4=SDA, AD0 to GND)"));
+        Serial.println(F("[OFFLINE] (No I2C ACK — Check Pin 3=SCL, Pin 4=SDA, AD0 to GND)"));
     }
 
     // 8. Initialize MLX90614 Contactless IR Thermometer (0x5A)
@@ -544,11 +624,7 @@ void setup() {
 void loop() {
     unsigned long now = millis();
 
-    // 1. Non-blocking Motor Turn-Off
-    if (motorOffTime > 0 && now >= motorOffTime) {
-        digitalWrite(VIBRATION_PIN, LOW);
-        motorOffTime = 0;
-    }
+
 
     // 2. Clear Temporary Alert States
     if (sosActive && now >= sosClearTime) sosActive = false;
@@ -563,7 +639,7 @@ void loop() {
         lastBtnPress = now;
         sosActive = true;
         sosClearTime = now + 4000; // Hold SOS alert active for 4 seconds
-        triggerMotor(400);         // 400ms haptic feedback buzz
+
 
         Serial.println(F("\n>>> [EMERGENCY SOS TRIGGERED] Patient pushed GPIO 5 SOS button! <<<"));
         outputTelemetry(true);     // Transmit urgent telemetry packet immediately
@@ -577,11 +653,25 @@ void loop() {
 
         // Read MPU-6050 Motion, Step & Impact
         if (mpuOK) {
-            sensors_event_t a, g, temp;
-            if (mpu.getEvent(&a, &g, &temp)) {
-                float ax = a.acceleration.x / 9.80665f;
-                float ay = a.acceleration.y / 9.80665f;
-                float az = a.acceleration.z / 9.80665f;
+            float ax, ay, az;
+            bool gotData = false;
+
+            if (mpuRawMode) {
+                // Raw register read for clone chips
+                mpuRawReadAccel(mpuAddress, ax, ay, az);
+                gotData = true;
+            } else {
+                // Adafruit library read
+                sensors_event_t a, g, temp;
+                if (mpu.getEvent(&a, &g, &temp)) {
+                    ax = a.acceleration.x / 9.80665f;
+                    ay = a.acceleration.y / 9.80665f;
+                    az = a.acceleration.z / 9.80665f;
+                    gotData = true;
+                }
+            }
+
+            if (gotData) {
                 currentMotionG = sqrt(ax * ax + ay * ay + az * az);
 
                 // Step Detection Algorithm
@@ -596,7 +686,7 @@ void loop() {
                 if (currentMotionG > 2.5f && !fallActive) {
                     fallActive = true;
                     fallClearTime = now + 5000; // Keep fall alert state active for 5s
-                    triggerMotor(500);          // 500ms urgent alarm vibration
+
                     Serial.print(F("\n>>> [FALL IMPACT DETECTED] Force: "));
                     Serial.print(currentMotionG, 2);
                     Serial.println(F(" g! Transmitting Emergency Telemetry... <<<"));
